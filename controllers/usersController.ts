@@ -3,6 +3,7 @@ import asyncHandler from 'express-async-handler';
 import bcrypt from 'bcrypt';
 import { Response } from 'express';
 import { AuthenticatedRequest, UserRequestBody } from '../types/express';
+import { NotFoundError, UnauthorizedError, ValidationError, ConflictError } from '../src/shared/errors/AppError';
 
 // @desc registration for a user
 // @route POST /api/users
@@ -14,8 +15,7 @@ const registerUser = asyncHandler(async (req: AuthenticatedRequest, res: Respons
 
     // confirm data
     if (!user || !user.email || !user.username || !user.password) {
-        res.status(400).json({ message: 'All fields are required' });
-        return;
+        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
     }
 
     // hash password
@@ -34,11 +34,7 @@ const registerUser = asyncHandler(async (req: AuthenticatedRequest, res: Respons
             user: createdUser.toUserResponse()
         });
     } else {
-        res.status(422).json({
-            errors: {
-                body: 'Unable to register a user'
-            }
-        });
+        throw new ConflictError('Unable to register a user');
     }
 });
 
@@ -53,8 +49,7 @@ const getCurrentUser = asyncHandler(async (req: AuthenticatedRequest, res: Respo
     const user = await User.findOne({ email }).exec();
 
     if (!user) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     res.status(200).json({
@@ -72,22 +67,19 @@ const userLogin = asyncHandler(async (req: AuthenticatedRequest, res: Response):
 
     // confirm data
     if (!user || !user.email || !user.password) {
-        res.status(400).json({ message: 'All fields are required' });
-        return;
+        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
     }
 
     const loginUser = await User.findOne({ email: user.email }).exec();
 
     if (!loginUser) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     const match = await bcrypt.compare(user.password, loginUser.password);
 
     if (!match) {
-        res.status(401).json({ message: 'Unauthorized: Wrong password' });
-        return;
+        throw new UnauthorizedError('Wrong password');
     }
 
     res.status(200).json({
@@ -105,8 +97,7 @@ const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Response)
 
     // confirm data
     if (!user) {
-        res.status(400).json({ message: 'Required a User object' });
-        return;
+        throw new ValidationError('Required a User object', { body: ['Required a User object'] });
     }
 
     const email = req.userEmail;
@@ -114,8 +105,7 @@ const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Response)
     const target = await User.findOne({ email }).exec();
 
     if (!target) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     if (user.email) {

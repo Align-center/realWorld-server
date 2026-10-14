@@ -4,6 +4,7 @@ import Comment from '../models/Comment';
 import asyncHandler from 'express-async-handler';
 import { Response } from 'express';
 import { AuthenticatedRequest, CommentRequestBody } from '../types/express';
+import { NotFoundError, ForbiddenError, UnauthorizedError } from '../src/shared/errors/AppError';
 
 const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const userId = req.userId;
@@ -11,8 +12,7 @@ const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res:
     const commenter = await User.findById(userId).exec();
 
     if (!commenter) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const { slug } = req.params;
@@ -20,8 +20,7 @@ const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res:
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     const { body } = req.body.comment;
@@ -45,8 +44,7 @@ const getCommentsFromArticle = asyncHandler(async (req: AuthenticatedRequest, re
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     let user: IUser | false = false;
@@ -68,8 +66,7 @@ const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const commenter = await User.findById(userId).exec();
 
     if (!commenter) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const { slug, id } = req.params;
@@ -77,15 +74,13 @@ const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     const comment = await Comment.findById(id).exec();
 
     if (!comment) {
-        res.status(404).json({ message: 'Comment Not Found' });
-        return;
+        throw new NotFoundError('Comment Not Found');
     }
 
     if (comment.author.toString() === commenter._id.toString()) {
@@ -93,7 +88,7 @@ const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         await Comment.deleteOne({ _id: comment._id });
         res.status(200).json({ message: 'Comment successfully deleted' });
     } else {
-        res.status(403).json({ message: 'Only the author can delete their comment' });
+        throw new ForbiddenError('Only the author can delete their comment');
     }
 });
 

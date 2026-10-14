@@ -4,28 +4,26 @@ import asyncHandler from 'express-async-handler';
 import { Response } from 'express';
 import { AuthenticatedRequest, ArticleRequestBody } from '../types/express';
 import mongoose from 'mongoose';
+import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } from '../src/shared/errors/AppError';
 
 const createArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const userId = req.userId;
 
     if (!userId) {
-        res.status(401).json({ message: 'Unauthorized' });
-        return;
+        throw new UnauthorizedError();
     }
 
     const author = await User.findById(userId).exec();
 
     if (!author) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const { title, description, body, tagList } = req.body.article;
 
     // confirm data
     if (!title || !description || !body) {
-        res.status(400).json({ message: 'All fields are required' });
-        return;
+        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
     }
 
     const article = await Article.create({
@@ -50,22 +48,20 @@ const deleteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     if (article.author.toString() === loginUser._id.toString()) {
         await Article.deleteOne({ slug });
         res.status(200).json({ message: 'Article successfully deleted!!!' });
     } else {
-        res.status(403).json({ message: 'Only the author can delete their article' });
+        throw new ForbiddenError('Only the author can delete their article');
     }
 });
 
@@ -76,15 +72,13 @@ const favoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     await loginUser.favorite(article._id);
@@ -103,15 +97,13 @@ const unfavoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Re
     const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     await loginUser.unfavorite(article._id);
@@ -129,8 +121,7 @@ const getArticleWithSlug = asyncHandler(async (req: AuthenticatedRequest, res: R
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     const user = req.loggedin ? (await User.findById(req.userId).exec()) ?? false : false;
@@ -148,15 +139,13 @@ const updateArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(404).json({ message: 'Article Not Found' });
-        return;
+        throw new NotFoundError('Article Not Found');
     }
 
     if (articleData.title) {
@@ -188,8 +177,7 @@ const feedArticles = asyncHandler(async (req: AuthenticatedRequest, res: Respons
     const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     const filteredArticles = await Article.find({ author: { $in: loginUser.followingUsers } })

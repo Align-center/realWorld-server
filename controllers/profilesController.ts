@@ -2,6 +2,7 @@ import User from '../models/User';
 import asyncHandler from 'express-async-handler';
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
+import { NotFoundError, UnauthorizedError } from '../src/shared/errors/AppError';
 
 const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { username } = req.params;
@@ -10,8 +11,7 @@ const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response)
     const user = await User.findOne({ username }).exec();
 
     if (!user) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     if (!loggedin) {
@@ -23,8 +23,7 @@ const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response)
 
     const loginUser = await User.findOne({ email: req.userEmail }).exec();
     if (!loginUser) {
-        res.status(401).json({ message: 'User Not Found' });
-        return;
+        throw new UnauthorizedError('User Not Found');
     }
 
     res.status(200).json({
@@ -39,8 +38,7 @@ const followUser = asyncHandler(async (req: AuthenticatedRequest, res: Response)
     const user = await User.findOne({ username }).exec();
 
     if (!user || !loginUser) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     await loginUser.follow(user._id);
@@ -57,8 +55,7 @@ const unFollowUser = asyncHandler(async (req: AuthenticatedRequest, res: Respons
     const user = await User.findOne({ username }).exec();
 
     if (!user || !loginUser) {
-        res.status(404).json({ message: 'User Not Found' });
-        return;
+        throw new NotFoundError('User Not Found');
     }
 
     await loginUser.unfollow(user._id);
