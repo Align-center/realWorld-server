@@ -14,8 +14,21 @@ const registerUser = asyncHandler(async (req: AuthenticatedRequest, res: Respons
     const { user } = req.body as UserRequestBody;
 
     // confirm data
-    if (!user || !user.email || !user.username || !user.password) {
-        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
+    const missingFields: string[] = [];
+    if (!user) {
+        missingFields.push('user');
+    } else {
+        if (!user.email) missingFields.push('email');
+        if (!user.username) missingFields.push('username');
+        if (!user.password) missingFields.push('password');
+    }
+
+    if (missingFields.length > 0) {
+        const fieldErrors: Record<string, string[]> = {};
+        for (const field of missingFields) {
+            fieldErrors[field] = [`${field} is required`];
+        }
+        throw new ValidationError('Validation failed', fieldErrors);
     }
 
     // hash password
@@ -66,8 +79,20 @@ const userLogin = asyncHandler(async (req: AuthenticatedRequest, res: Response):
     const { user } = req.body as UserRequestBody;
 
     // confirm data
-    if (!user || !user.email || !user.password) {
-        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
+    const missingFields: string[] = [];
+    if (!user) {
+        missingFields.push('user');
+    } else {
+        if (!user.email) missingFields.push('email');
+        if (!user.password) missingFields.push('password');
+    }
+
+    if (missingFields.length > 0) {
+        const fieldErrors: Record<string, string[]> = {};
+        for (const field of missingFields) {
+            fieldErrors[field] = [`${field} is required`];
+        }
+        throw new ValidationError('Validation failed', fieldErrors);
     }
 
     const loginUser = await User.findOne({ email: user.email }).exec();
@@ -97,7 +122,7 @@ const updateUser = asyncHandler(async (req: AuthenticatedRequest, res: Response)
 
     // confirm data
     if (!user) {
-        throw new ValidationError('Required a User object', { body: ['Required a User object'] });
+        throw new ValidationError('User object is required', { user: ['User object is required'] });
     }
 
     const email = req.userEmail;

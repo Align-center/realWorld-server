@@ -22,8 +22,17 @@ const createArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const { title, description, body, tagList } = req.body.article;
 
     // confirm data
-    if (!title || !description || !body) {
-        throw new ValidationError('All fields are required', { body: ['All fields are required'] });
+    const missingFields: string[] = [];
+    if (!title) missingFields.push('title');
+    if (!description) missingFields.push('description');
+    if (!body) missingFields.push('body');
+
+    if (missingFields.length > 0) {
+        const fieldErrors: Record<string, string[]> = {};
+        for (const field of missingFields) {
+            fieldErrors[field] = [`${field} is required`];
+        }
+        throw new ValidationError('Validation failed', fieldErrors);
     }
 
     const article = await Article.create({

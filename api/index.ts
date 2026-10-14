@@ -50,15 +50,15 @@ app.use('/api/articles', commentRoutes);
 // Global error handler - must be last middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (err instanceof AppError) {
-        if (err instanceof ValidationError && Object.keys(err.errors).length > 0) {
+        if (err instanceof ValidationError) {
             return res.status(err.statusCode).json({ errors: err.errors });
         }
         return res.status(err.statusCode).json({ message: err.message });
     }
 
     // Handle Mongoose validation errors
-    if (err.name === 'ValidationError') {
-        const mongooseErr = err as any;
+    if (err.name === 'ValidationError' && 'errors' in err) {
+        const mongooseErr = err as { errors: Record<string, { message: string }> };
         const errors: Record<string, string[]> = {};
         for (const field in mongooseErr.errors) {
             errors[field] = [mongooseErr.errors[field].message];
@@ -67,8 +67,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
     }
 
     // Handle Mongoose duplicate key errors
-    if (err.name === 'MongoServerError' && (err as any).code === 11000) {
-        const mongoErr = err as any;
+    if (err.name === 'MongoServerError' && 'code' in err && (err as { code: number }).code === 11000) {
+        const mongoErr = err as unknown as { keyValue: Record<string, unknown> };
         const field = Object.keys(mongoErr.keyValue)[0];
         return res.status(422).json({ errors: { [field]: ['already exists'] } });
     }
