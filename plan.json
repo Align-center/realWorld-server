@@ -1,0 +1,9 @@
+{
+  "issues": [
+    {
+      "id": "3",
+      "title": "01: Foundation — TypeScript Strict Mode Setup",
+      "branch": "sandcastle/issue-3"
+    }
+  ]
+}

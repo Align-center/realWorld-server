@@ -1,0 +1,29 @@
+{
+  "issues": [
+    {"id": "3", "title": "01: Foundation — TypeScript Strict Mode Setup", "blockers": []},
+    {"id": "4", "title": "02: Foundation — Test Infrastructure", "blockers": ["3"]},
+    {"id": "5", "title": "03: AuthModule — TokenPort Interface & Adapters", "blockers": ["3", "4"]},
+    {"id": "6", "title": "04: AuthModule — Core Auth Logic", "blockers": ["5"]},
+    {"id": "7", "title": "05: ArticleModule — HTTP Characterization Tests", "blockers": ["4"]},
+    {"id": "8", "title": "06: ArticleModule — Unit Tests", "blockers": ["7"]},
+    {"id": "9", "title": "07: ArticleModule — Migrate GET /articles/:slug Handler", "blockers": ["8"]},
+    {"id": "10", "title": "08: ArticleModule — Migrate GET /articles Handler", "blockers": ["9"]},
+    {"id": "11", "title": "09: ArticleModule — Migrate GET /articles/feed Handler", "blockers": ["10"]},
+    {"id": "12", "title": "10: ArticleModule — Migrate POST /articles Handler", "blockers": ["11"]},
+    {"id": "13", "title": "11: ArticleModule — Migrate PUT /articles/:slug Handler", "blockers": ["12"]},
+    {"id": "14", "title": "12: ArticleModule — Migrate DELETE /articles/:slug Handler", "blockers": ["13"]},
+    {"id": "15", "title": "13: ArticleModule — Migrate Favorite/Unfavorite Handlers", "blockers": ["14"]},
+    {"id": "16", "title": "14: ProfileModule — HTTP Characterization Tests", "blockers": ["4", "6"]},
+    {"id": "17", "title": "15: ProfileModule — Unit Tests", "blockers": ["16"]},
+    {"id": "18", "title": "16: ProfileModule — Migrate All Profile Handlers", "blockers": ["17", "6"]},
+    {"id": "19", "title": "17: CommentModule — HTTP Characterization Tests", "blockers": ["4", "7"]},
+    {"id": "20", "title": "18: CommentModule — Unit Tests", "blockers": ["19"]},
+    {"id": "21", "title": "19: CommentModule — Migrate All Comment Handlers", "blockers": ["20", "9"]},
+    {"id": "22", "title": "20: AuthMiddleware — Unify verifyJWT / verifyJWTOptional", "blockers": ["5", "3"]},
+    {"id": "23", "title": "21: Cross-cutting — Manual DI Wiring", "blockers": ["3", "5", "6", "9", "18", "21"]},
+    {"id": "24", "title": "22: Cross-cutting — Typed AppError Subclasses", "blockers": ["3"]},
+    {"id": "25", "title": "23: CI — Metrics Dashboard", "blockers": ["3", "4"]},
+    {"id": "26", "title": "24: ADRs — Index + 6 Architecture Decision Records", "blockers": ["3"]},
+    {"id": "27", "title": "25: Tags — Migrate GET /api/tags Handler", "blockers": ["3", "4"]}
+  ]
+}
