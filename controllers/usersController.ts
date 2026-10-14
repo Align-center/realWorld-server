@@ -1,23 +1,8 @@
-import User, { IUser } from '../models/User';
+import User from '../models/User';
 import asyncHandler from 'express-async-handler';
 import bcrypt from 'bcrypt';
-import { Request, Response } from 'express';
-
-interface UserRequestBody {
-    user: {
-        email: string;
-        username: string;
-        password: string;
-        image?: string;
-        bio?: string;
-    };
-}
-
-interface AuthenticatedRequest extends Request {
-    userId?: string;
-    userEmail?: string;
-    userHashedPwd?: string;
-}
+import { Response } from 'express';
+import { AuthenticatedRequest, UserRequestBody } from '../types/express';
 
 // @desc registration for a user
 // @route POST /api/users

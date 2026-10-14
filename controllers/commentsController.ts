@@ -1,26 +1,14 @@
-import Article, { IArticle } from '../models/Article';
+import Article from '../models/Article';
 import User, { IUser } from '../models/User';
-import Comment, { IComment } from '../models/Comment';
+import Comment from '../models/Comment';
 import asyncHandler from 'express-async-handler';
-import { Request, Response } from 'express';
-
-interface AuthenticatedRequest extends Request {
-    userId?: string;
-    userEmail?: string;
-    userHashedPwd?: string;
-    loggedin?: boolean;
-}
-
-interface CommentRequestBody {
-    comment: {
-        body: string;
-    };
-}
+import { Response } from 'express';
+import { AuthenticatedRequest, CommentRequestBody } from '../types/express';
 
 const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const id = req.userId;
+    const userId = req.userId;
 
-    const commenter = await User.findById(id).exec();
+    const commenter = await User.findById(userId).exec();
 
     if (!commenter) {
         res.status(401).json({ message: 'User Not Found' });
@@ -32,7 +20,7 @@ const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res:
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
@@ -46,7 +34,7 @@ const addCommentsToArticle = asyncHandler(async (req: AuthenticatedRequest, res:
 
     await article.addComment(newComment._id);
 
-    res.status(200).json({
+    res.status(201).json({
         comment: await newComment.toCommentResponse(commenter)
     });
 });
@@ -57,32 +45,21 @@ const getCommentsFromArticle = asyncHandler(async (req: AuthenticatedRequest, re
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
-    const loggedin = req.loggedin;
-
-    if (loggedin) {
-        const loginUser = await User.findById(req.userId).exec();
-        if (!loginUser) {
-            res.status(401).json({ message: 'User Not Found' });
-            return;
-        }
-        res.status(200).json({
-            comments: await Promise.all(article.comments.map(async (commentId) => {
-                const commentObj = await Comment.findById(commentId).exec();
-                return await commentObj?.toCommentResponse(loginUser);
-            }))
-        });
-    } else {
-        res.status(200).json({
-            comments: await Promise.all(article.comments.map(async (commentId) => {
-                const commentObj = await Comment.findById(commentId).exec();
-                return await commentObj?.toCommentResponse(false);
-            }))
-        });
+    let user: IUser | false = false;
+    if (req.loggedin && req.userId) {
+        user = (await User.findById(req.userId).exec()) ?? false;
     }
+
+    res.status(200).json({
+        comments: await Promise.all(article.comments.map(async (commentId) => {
+            const commentObj = await Comment.findById(commentId).exec();
+            return await commentObj?.toCommentResponse(user);
+        }))
+    });
 });
 
 const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -100,7 +77,7 @@ const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
@@ -114,9 +91,9 @@ const deleteComment = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     if (comment.author.toString() === commenter._id.toString()) {
         await article.removeComment(comment._id);
         await Comment.deleteOne({ _id: comment._id });
-        res.status(200).json({ message: 'comment has been successfully deleted!!!' });
+        res.status(200).json({ message: 'Comment successfully deleted' });
     } else {
-        res.status(403).json({ error: 'only the author of the comment can delete the comment' });
+        res.status(403).json({ message: 'Only the author can delete their comment' });
     }
 });
 

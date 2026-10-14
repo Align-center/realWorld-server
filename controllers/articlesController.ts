@@ -1,28 +1,19 @@
-import Article, { IArticle } from '../models/Article';
+import Article from '../models/Article';
 import User, { IUser } from '../models/User';
 import asyncHandler from 'express-async-handler';
-import { Request, Response } from 'express';
-
-interface AuthenticatedRequest extends Request {
-    userId?: string;
-    userEmail?: string;
-    userHashedPwd?: string;
-    loggedin?: boolean;
-}
-
-interface ArticleRequestBody {
-    article: {
-        title: string;
-        description: string;
-        body: string;
-        tagList?: string[];
-    };
-}
+import { Response } from 'express';
+import { AuthenticatedRequest, ArticleRequestBody } from '../types/express';
+import mongoose from 'mongoose';
 
 const createArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const id = req.userId;
+    const userId = req.userId;
 
-    const author = await User.findById(id).exec();
+    if (!userId) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+    }
+
+    const author = await User.findById(userId).exec();
 
     if (!author) {
         res.status(401).json({ message: 'User Not Found' });
@@ -37,26 +28,26 @@ const createArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         return;
     }
 
-    const article = await Article.create({ title, description, body });
-
-    article.author = id as any;
-
-    if (Array.isArray(tagList) && tagList.length > 0) {
-        article.tagList = tagList;
-    }
+    const article = await Article.create({
+        title,
+        description,
+        body,
+        author: userId,
+        tagList: Array.isArray(tagList) && tagList.length > 0 ? tagList : []
+    });
 
     await article.save();
 
-    res.status(200).json({
+    res.status(201).json({
         article: await article.toArticleResponse(author)
     });
 });
 
 const deleteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const id = req.userId;
+    const userId = req.userId;
     const { slug } = req.params;
 
-    const loginUser = await User.findById(id).exec();
+    const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
         res.status(401).json({ message: 'User Not Found' });
@@ -66,7 +57,7 @@ const deleteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
@@ -74,15 +65,15 @@ const deleteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         await Article.deleteOne({ slug });
         res.status(200).json({ message: 'Article successfully deleted!!!' });
     } else {
-        res.status(403).json({ message: 'Only the author can delete his article' });
+        res.status(403).json({ message: 'Only the author can delete their article' });
     }
 });
 
 const favoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const id = req.userId;
+    const userId = req.userId;
     const { slug } = req.params;
 
-    const loginUser = await User.findById(id).exec();
+    const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
         res.status(401).json({ message: 'User Not Found' });
@@ -92,7 +83,7 @@ const favoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Resp
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
@@ -106,10 +97,10 @@ const favoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Resp
 });
 
 const unfavoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    const id = req.userId;
+    const userId = req.userId;
     const { slug } = req.params;
 
-    const loginUser = await User.findById(id).exec();
+    const loginUser = await User.findById(userId).exec();
 
     if (!loginUser) {
         res.status(401).json({ message: 'User Not Found' });
@@ -119,7 +110,7 @@ const unfavoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Re
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
@@ -138,12 +129,14 @@ const getArticleWithSlug = asyncHandler(async (req: AuthenticatedRequest, res: R
     const article = await Article.findOne({ slug }).exec();
 
     if (!article) {
-        res.status(401).json({ message: 'Article Not Found' });
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
+    const user = req.loggedin ? (await User.findById(req.userId).exec()) ?? false : false;
+
     res.status(200).json({
-        article: await article.toArticleResponse(false)
+        article: await article.toArticleResponse(user)
     });
 });
 
@@ -159,44 +152,36 @@ const updateArticle = asyncHandler(async (req: AuthenticatedRequest, res: Respon
         return;
     }
 
-    const target = await Article.findOne({ slug }).exec();
+    const article = await Article.findOne({ slug }).exec();
 
-    if (!target) {
-        res.status(401).json({ message: 'Article Not Found' });
+    if (!article) {
+        res.status(404).json({ message: 'Article Not Found' });
         return;
     }
 
     if (articleData.title) {
-        target.title = articleData.title;
+        article.title = articleData.title;
     }
     if (articleData.description) {
-        target.description = articleData.description;
+        article.description = articleData.description;
     }
     if (articleData.body) {
-        target.body = articleData.body;
+        article.body = articleData.body;
     }
     if (articleData.tagList) {
-        target.tagList = articleData.tagList;
+        article.tagList = articleData.tagList;
     }
 
-    await target.save();
+    await article.save();
 
     res.status(200).json({
-        article: await target.toArticleResponse(loginUser)
+        article: await article.toArticleResponse(loginUser)
     });
 });
 
 const feedArticles = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    let limit = 20;
-    let offset = 0;
-
-    if (req.query.limit) {
-        limit = Number(req.query.limit);
-    }
-
-    if (req.query.offset) {
-        offset = Number(req.query.offset);
-    }
+    const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
 
     const userId = req.userId;
 
@@ -223,17 +208,10 @@ const feedArticles = asyncHandler(async (req: AuthenticatedRequest, res: Respons
 });
 
 const listArticles = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-    let limit = 20;
-    let offset = 0;
-    const query: any = {};
+    const limit = Number(req.query.limit) || 20;
+    const offset = Number(req.query.offset) || 0;
+    const query: mongoose.FilterQuery<typeof Article> = {};
 
-    if (req.query.limit) {
-        limit = Number(req.query.limit);
-    }
-
-    if (req.query.offset) {
-        offset = Number(req.query.offset);
-    }
     if (req.query.tag) {
         query.tagList = { $in: [req.query.tag] };
     }
@@ -260,26 +238,17 @@ const listArticles = asyncHandler(async (req: AuthenticatedRequest, res: Respons
 
     const articleCount = await Article.countDocuments(query);
 
-    if (req.loggedin) {
-        const loginUser = await User.findById(req.userId).exec();
-        if (!loginUser) {
-            res.status(401).json({ message: 'User Not Found' });
-            return;
-        }
-        res.status(200).json({
-            articles: await Promise.all(filteredArticles.map(async (article) => {
-                return await article.toArticleResponse(loginUser);
-            })),
-            articlesCount: articleCount
-        });
-    } else {
-        res.status(200).json({
-            articles: await Promise.all(filteredArticles.map(async (article) => {
-                return await article.toArticleResponse(false);
-            })),
-            articlesCount: articleCount
-        });
+    let user: IUser | false = false;
+    if (req.loggedin && req.userId) {
+        user = await User.findById(req.userId).exec() || false;
     }
+
+    res.status(200).json({
+        articles: await Promise.all(filteredArticles.map(async (article) => {
+            return await article.toArticleResponse(user);
+        })),
+        articlesCount: articleCount
+    });
 });
 
 export {

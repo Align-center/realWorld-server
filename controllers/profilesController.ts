@@ -1,13 +1,7 @@
-import User, { IUser } from '../models/User';
+import User from '../models/User';
 import asyncHandler from 'express-async-handler';
-import { Request, Response } from 'express';
-
-interface AuthenticatedRequest extends Request {
-    userId?: string;
-    userEmail?: string;
-    userHashedPwd?: string;
-    loggedin?: boolean;
-}
+import { Response } from 'express';
+import { AuthenticatedRequest } from '../types/express';
 
 const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { username } = req.params;
