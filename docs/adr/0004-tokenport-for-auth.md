@@ -84,7 +84,7 @@ class InMemoryTokenAdapter implements TokenPort {
 ## Related
 
 - ADR-0001 (TypeScript) — `TokenPort` is a TypeScript interface
-- ADR-0003 (DTOs at seam) — `AuthModule` returns `UserDTO` with `token: string`
+- ADR-0003 (DTOs at Module Seams) — `AuthModule` returns `UserDTO` with `token: string`
 - ADR-0005 (Manual DI) — `AuthModule` wired with `TokenPort` in `api/index.ts`
 - CONTEXT.md — `TokenPort`, `JwtAdapter`, `InMemoryTokenAdapter`, `UserDTO` canonized
 - Spec: AuthModule user stories (register, login, getCurrentUser, updateUser)

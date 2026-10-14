@@ -77,7 +77,7 @@ All ADRs use canonical terms from [CONTEXT.md](../CONTEXT.md):
 | **Depth** | Large implementation behind small interface (leverage) |
 | **Locality** | Related logic co-located in one module |
 
-**Forbidden synonyms**: "service", "component", "API", "boundary", "repository" (unless extracted as port), "post", "account", "feed" (noun).
+**Forbidden synonyms**: "service", "component", "API", "boundary", "repository" (unless extracted as port), "post", "account", "feed".
 
 ---
 

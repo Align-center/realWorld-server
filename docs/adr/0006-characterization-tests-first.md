@@ -87,7 +87,7 @@ describe('Article endpoints (characterization)', () => {
 
 - ADR-0001 (TypeScript) — Tests written in TypeScript, type-checked
 - ADR-0002 (Single Deep ArticleModule) — Characterization tests target module seam after swap
-- ADR-0003 (DTOs at seam) — Characterization tests assert on DTO shapes (stable contract)
+- ADR-0003 (DTOs at Module Seams) — Characterization tests assert on DTO shapes (stable contract)
 - ADR-0004 (TokenPort) — `InMemoryTokenAdapter` makes auth characterization tests deterministic
 - ADR-0005 (Manual DI) — Test wiring mirrors production wiring with test adapters
 - CONTEXT.md — `ArticleModule`, `AuthModule`, `ProfileModule`, `CommentModule` interfaces canonized

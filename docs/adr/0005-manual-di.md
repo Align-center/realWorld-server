@@ -74,7 +74,7 @@ Each module's constructor declares its dependencies explicitly. No decorators, n
 ## Related
 
 - ADR-0002 (Single Deep ArticleModule) — `ArticleModule` receives models via constructor
-- ADR-0003 (DTOs at seam) — Modules return DTOs; wiring doesn't leak internals
+- ADR-0003 (DTOs at Module Seams) — Modules return DTOs; wiring doesn't leak internals
 - ADR-0004 (TokenPort) — `AuthModule` wired with `JwtAdapter` / `InMemoryTokenAdapter`
 - CONTEXT.md — `module`, `interface`, `seam`, `adapter` vocabulary; manual DI is the composition pattern
 - Spec: Cross-cutting decision #17 — "Manual DI wiring in `api/index.ts` (no container)"
