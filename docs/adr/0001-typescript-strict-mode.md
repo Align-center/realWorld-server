@@ -44,5 +44,5 @@ Adopt **TypeScript with `strict: true`** from day one.
 
 ## Related
 
-- ADR-0002 (single ArticleModule) — TypeScript enables the deep module interface to be expressed and checked
-- ADR-0003 (DTOs at seam) — DTOs are TypeScript interfaces
+- ADR-0002 (Single Deep ArticleModule) — TypeScript enables the deep module interface to be expressed and checked
+- ADR-0003 (DTOs at Module Seams) — DTOs are TypeScript interfaces

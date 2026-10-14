@@ -32,7 +32,7 @@ Two design paths:
 - Transaction logic (`favorite` updates User + Article) lives in module — acceptable for now
 - If `CommentModule` needs Article queries later, potential duplication — extract `ArticleRepositoryPort` then
 
-### Mitigation
+### Mitigations
 - Keep module focused: only Article-centric operations. User-centric ops (profile, auth) stay in their modules.
 - When a second adapter is needed (e.g., Postgres), extract `ArticleRepositoryPort` — not before.
 
@@ -46,5 +46,5 @@ Two design paths:
 ## Related
 
 - ADR-0001 (TypeScript) — enables the module interface to be typed and checked
-- ADR-0003 (DTOs at seam) — `ArticleModule` returns DTOs, not Mongoose docs
+- ADR-0003 (DTOs at Module Seams) — `ArticleModule` returns DTOs, not Mongoose docs
 - Future: if `ArticleRepositoryPort` extracted, new ADR

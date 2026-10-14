@@ -1,4 +1,4 @@
-# 0003 — DTOs at Module Seam (Not Mongoose Documents)
+# 0003 — DTOs at Module Seams (Not Mongoose Documents)
 
 **Date:** 2026-10-13  
 **Status:** Accepted
@@ -69,5 +69,5 @@ return mapToDTO(doc, viewerId);  // mapping logic hidden inside module
 ## Related
 
 - ADR-0001 (TypeScript) — DTOs are TypeScript interfaces
-- ADR-0002 (single ArticleModule) — the seam that DTOs protect
+- ADR-0002 (Single Deep ArticleModule) — the seam that DTOs protect
 - CONTEXT.md — DTO shapes canonized in glossary
