@@ -4,6 +4,9 @@ import type { IUser } from '@/models/User';
 import type { IArticle } from '@/models/Article';
 import mongoose from 'mongoose';
 
+let userCounter = 0;
+let articleCounter = 0;
+
 export interface SeedUserOptions {
     username?: string;
     email?: string;
@@ -21,9 +24,11 @@ export interface SeedArticleOptions {
 }
 
 export const seedUser = async (options: SeedUserOptions = {}): Promise<IUser> => {
+    userCounter += 1;
+    const suffix = `${Date.now()}_${userCounter}`;
     const user = new User({
-        username: options.username || `testuser_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        email: options.email || `test_${Date.now()}_${Math.random().toString(36).slice(2, 7)}@example.com`,
+        username: options.username || `testuser_${suffix}`,
+        email: options.email || `test_${suffix}@example.com`,
         password: options.password || 'password123',
         bio: options.bio || '',
         image: options.image || 'https://static.productionready.io/images/smiley-cyrus.jpg',
@@ -37,8 +42,9 @@ export const seedArticle = async (options: SeedArticleOptions = {}): Promise<IAr
         author = await seedUser();
     }
 
+    articleCounter += 1;
     const article = new Article({
-        title: options.title || `Test Article ${Date.now()}`,
+        title: options.title || `Test Article ${Date.now()}_${articleCounter}`,
         description: options.description || 'Test description',
         body: options.body || 'Test body content',
         tagList: options.tagList || ['test', 'article'],

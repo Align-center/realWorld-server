@@ -52,6 +52,12 @@ const PORT = process.env.PORT || 4000;
 const startServer = async (): Promise<void> => {
     await connectDB();
 
+    // Use a flag to prevent duplicate event handlers if startServer is called multiple times
+    if (startServer.hasStarted) {
+        return;
+    }
+    startServer.hasStarted = true;
+
     mongoose.connection.once('open', () => {
         console.log('Connected to MongoDB');
         app.listen(PORT, () => {
@@ -63,6 +69,8 @@ const startServer = async (): Promise<void> => {
         console.log(err);
     });
 };
+
+startServer.hasStarted = false;
 
 // Only start the server if this file is run directly (not imported)
 if (require.main === module) {

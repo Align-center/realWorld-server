@@ -1,6 +1,7 @@
-import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { beforeAll, afterAll, beforeEach } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
+import fs from 'fs';
 
 let mongoServer: MongoMemoryServer;
 
@@ -9,13 +10,13 @@ beforeAll(async () => {
     process.env.ACCESS_TOKEN_SECRET = 'test-secret-key-for-testing';
     process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-key-for-testing';
 
-    // Use the pre-downloaded Ubuntu ARM64 MongoDB binary
+    // Try to use pre-downloaded MongoDB binary for ARM64 Ubuntu 22.04
     const mongoBinaryPath = '/tmp/mongodb-binary/mongodb-linux-aarch64-ubuntu2204-7.0.14/bin/mongod';
-    mongoServer = await MongoMemoryServer.create({
-        binary: {
-            systemBinary: mongoBinaryPath,
-        },
-    });
+    const binaryOptions = fs.existsSync(mongoBinaryPath)
+        ? { binary: { systemBinary: mongoBinaryPath } }
+        : { binary: { version: '7.0.14' } };
+
+    mongoServer = await MongoMemoryServer.create(binaryOptions);
     const uri = mongoServer.getUri();
     process.env.DATABASE_URI = uri;
     await mongoose.connect(uri);
@@ -33,8 +34,4 @@ beforeEach(async () => {
     for (const key of Object.keys(collections)) {
         await collections[key].deleteMany({});
     }
-});
-
-afterEach(async () => {
-    // Clean up after each test if needed
 });
