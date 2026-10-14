@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
+import { ForbiddenError } from '../src/shared/errors/AppError';
 
 declare global {
     namespace Express {
@@ -28,7 +29,7 @@ const verifyJWTOptional = (req: Request, res: Response, next: NextFunction): voi
         process.env.ACCESS_TOKEN_SECRET as string,
         (err: jwt.VerifyErrors | null, decoded: any) => {
             if (err) {
-                res.status(403).json({ message: 'Forbidden' });
+                next(new ForbiddenError());
                 return;
             }
             req.loggedin = true;

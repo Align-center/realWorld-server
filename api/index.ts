@@ -13,6 +13,7 @@ import profileRoutes from '../routes/profileRoutes';
 import articleRoutes from '../routes/articleRoutes';
 import tagRoutes from '../routes/tagRoutes';
 import commentRoutes from '../routes/commentRoutes';
+import { AppError, ValidationError } from '../src/shared/errors/AppError';
 
 export const createApp = (): express.Express => {
     const app = express();
@@ -42,6 +43,41 @@ export const createApp = (): express.Express => {
 
     // comment routes
     app.use('/api/articles', commentRoutes);
+
+    // Global error handler - must be last middleware
+    app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+        if (err instanceof AppError) {
+            if (err instanceof ValidationError) {
+                return res.status(err.statusCode).json({ errors: err.errors });
+            }
+            return res.status(err.statusCode).json({ message: err.message });
+        }
+
+        // Handle Mongoose validation errors
+        if (err.name === 'ValidationError' && 'errors' in err) {
+            const mongooseErr = err as { errors: Record<string, { message: string }> };
+            const errors: Record<string, string[]> = {};
+            for (const field in mongooseErr.errors) {
+                errors[field] = [mongooseErr.errors[field].message];
+            }
+            return res.status(422).json({ errors });
+        }
+
+        // Handle Mongoose duplicate key errors
+        if (err.name === 'MongoServerError' && 'code' in err && (err as { code: number }).code === 11000) {
+            const mongoErr = err as unknown as { keyValue: Record<string, unknown> };
+            const field = Object.keys(mongoErr.keyValue)[0];
+            return res.status(422).json({ errors: { [field]: ['already exists'] } });
+        }
+
+        // Handle JWT errors
+        if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        console.error(err);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    });
 
     return app;
 };
