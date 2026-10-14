@@ -14,47 +14,59 @@ import articleRoutes from '../routes/articleRoutes';
 import tagRoutes from '../routes/tagRoutes';
 import commentRoutes from '../routes/commentRoutes';
 
-const app = express();
+export const createApp = (): express.Express => {
+    const app = express();
+
+    app.use(cors(corsOptions));
+    app.use(express.json());
+    app.use(cookieParser());
+
+    // static route
+    app.use('/', express.static(path.join(__dirname, '../public')));
+    app.use('/', rootRouter);
+
+    // user routes - for testing
+    app.use('/test', testRoutes);
+
+    // user routes - for /api/users and /api/user
+    app.use('/api', userRoutes);
+
+    // user routes - for profiles
+    app.use('/api/profiles', profileRoutes);
+
+    // article routes
+    app.use('/api/articles', articleRoutes);
+
+    // tag route
+    app.use('/api/tags', tagRoutes);
+
+    // comment routes
+    app.use('/api/articles', commentRoutes);
+
+    return app;
+};
+
+const app = createApp();
 const PORT = process.env.PORT || 4000;
 
-console.log(process.env.NODE_ENV);
-connectDB();
+const startServer = async (): Promise<void> => {
+    await connectDB();
 
-app.use(cors(corsOptions));
-app.use(express.json()); // middleware to parse json
-app.use(cookieParser());
-
-// static route
-app.use('/', express.static(path.join(__dirname, '../public')));
-app.use('/', rootRouter);
-
-// user routes - for testing
-app.use('/test', testRoutes);
-
-// user routes - for /api/users and /api/user
-app.use('/api', userRoutes);
-
-// user routes - for profiles
-app.use('/api/profiles', profileRoutes);
-
-// article routes
-app.use('/api/articles', articleRoutes);
-
-// tag route
-app.use('/api/tags', tagRoutes);
-
-// comment routes
-app.use('/api/articles', commentRoutes);
-
-mongoose.connection.once('open', () => {
-    console.log('Connected to MongoDB');
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
+    mongoose.connection.once('open', () => {
+        console.log('Connected to MongoDB');
+        app.listen(PORT, () => {
+            console.log(`Server running on port ${PORT}`);
+        });
     });
-});
 
-mongoose.connection.on('error', (err) => {
-    console.log(err);
-});
+    mongoose.connection.on('error', (err) => {
+        console.log(err);
+    });
+};
+
+// Only start the server if this file is run directly (not imported)
+if (require.main === module) {
+    startServer();
+}
 
 export default app;
