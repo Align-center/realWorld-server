@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:coverage": "c8 --reporter=json --reporter=lcov --reporter=text vitest run",
     "lint:complexity": "eslint --format=json --output-file=metrics/complexity.json .",
-    "type:coverage": "type-coverage --detail --catch --strict --exclude-files=\"**/*.d.ts\" --include-files=\"src/**/*.ts,controllers/**/*.ts,models/**/*.ts,routes/**/*.ts,middleware/**/*.ts,config/**/*.ts,api/**/*.ts\" --json-output > metrics/type-coverage.json",
+    "type:coverage": "type-coverage -c type-coverage.config.json > metrics/type-coverage.json",
     "metrics": "npm run lint:complexity && npm run test:coverage && npm run type:coverage",
     "sandcastle": "npx tsx .sandcastle/main.mts"
   },
