@@ -14,7 +14,7 @@ beforeAll(async () => {
     process.env.ACCESS_TOKEN_SECRET = 'test-secret-key-for-testing';
     process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-key-for-testing';
 
-    // Try to use pre-downloaded MongoDB binary for ARM64 Ubuntu 24.04
+// Try to use pre-downloaded MongoDB binary for ARM64 Ubuntu 24.04
     const mongoBinaryPath = '/tmp/mongodb-binary/mongodb-linux-aarch64-ubuntu2404-8.0.0/bin/mongod';
     const binaryOptions = fs.existsSync(mongoBinaryPath)
         ? { binary: { systemBinary: mongoBinaryPath } }
