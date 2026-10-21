@@ -1,25 +1,40 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import createTestAgent from '../utils/test-app';
-import { seedUser, seedArticle, authHeader, authToken } from '../utils/fixtures';
+import { seedUser, seedArticle, authHeader } from '../utils/fixtures';
 import Article from '@/models/Article';
 import User from '@/models/User';
 import Comment, { IComment } from '@/models/Comment';
 import mongoose from 'mongoose';
+import type { IUser } from '@/models/User';
+import type { IArticle } from '@/models/Article';
+
+interface ArticleDTO {
+    slug: string;
+    title: string;
+    description: string;
+    body: string;
+    createdAt: Date;
+    updatedAt: Date;
+    tagList: string[];
+    favorited: boolean;
+    favoritesCount: number;
+    author: {
+        username: string;
+        bio: string;
+        image: string;
+        following: boolean;
+    };
+}
 
 // ============================================================================
 // CORPUS FIXTURE: 10 users, 50 articles with varied tags, favorites, comments
 // ============================================================================
 
-interface Corpus {
-    users: Awaited<ReturnType<typeof seedUser>>[];
-    articles: Awaited<ReturnType<typeof seedArticle>>[];
-    comments: CommentDoc[];
-}
-
-let corpus: Corpus;
-let agent: ReturnType<typeof createTestAgent>;
-
-type CommentDoc = mongoose.Document<unknown, {}, IComment> & IComment & { _id: mongoose.Types.ObjectId; __v: number };
+const DEFAULT_LIMIT = 20;
+const USERS_COUNT = 10;
+const ARTICLES_COUNT = 50;
+const ARTICLES_PER_USER = 5;
+const COMMENTS_PER_ARTICLE = 3;
 
 const TAGS = [
     'javascript', 'typescript', 'react', 'vue', 'angular',
@@ -30,12 +45,46 @@ const TAGS = [
     'architecture', 'microservices', 'monolith', 'serverless', 'graphql',
     'security', 'authentication', 'authorization', 'oauth', 'jwt',
     'performance', 'caching', 'optimization', 'profiling', 'benchmarking',
-];
+] as const;
+
+interface Corpus {
+    users: IUser[];
+    articles: IArticle[];
+    comments: CommentDoc[];
+}
+
+let corpus: Corpus;
+let agent: ReturnType<typeof createTestAgent>;
+
+type CommentDoc = mongoose.Document<unknown, {}, IComment> & IComment & { _id: mongoose.Types.ObjectId; __v: number };
+
+/** Find an article authored by the given user. */
+function findUserArticle(user: IUser): IArticle | undefined {
+    return corpus.articles.find(a => a.author.toString() === user._id.toString());
+}
+
+/** Find an article favorited by the given user. */
+function findFavoritedArticle(user: IUser): IArticle | undefined {
+    return corpus.articles.find(a => user.favouriteArticles.some(id => id.equals(a._id)));
+}
+
+/** Find an article NOT favorited by the given user and NOT authored by them. */
+function findUnfavoritedArticle(user: IUser): IArticle | undefined {
+    return corpus.articles.find(a =>
+        !user.favouriteArticles.some(id => id.equals(a._id)) &&
+        a.author.toString() !== user._id.toString()
+    );
+}
+
+/** Find an article authored by the given author user. */
+function findArticleByAuthor(author: IUser): IArticle | undefined {
+    return corpus.articles.find(a => a.author.toString() === author._id.toString());
+}
 
 async function buildCorpus(): Promise<Corpus> {
     // Create 10 users
-    const users = [];
-    for (let i = 0; i < 10; i++) {
+    const users: IUser[] = [];
+    for (let i = 0; i < USERS_COUNT; i++) {
         const user = await seedUser({
             username: `author${i}`,
             email: `author${i}@example.com`,
@@ -46,10 +95,10 @@ async function buildCorpus(): Promise<Corpus> {
     }
 
     // Create 50 articles distributed among users
-    const articles = [];
-    for (let i = 0; i < 50; i++) {
-        const author = users[i % 10];
-        const tagCount = 1 + (i % 5); // 1-5 tags per article
+    const articles: IArticle[] = [];
+    for (let i = 0; i < ARTICLES_COUNT; i++) {
+        const author = users[i % USERS_COUNT];
+        const tagCount = 1 + (i % ARTICLES_PER_USER); // 1-5 tags per article
         const articleTags = TAGS.slice(i * 2, i * 2 + tagCount);
         const article = await seedArticle({
             title: `Article ${i + 1}: ${articleTags.join(' ')}`,
@@ -61,21 +110,18 @@ async function buildCorpus(): Promise<Corpus> {
         articles.push(article);
     }
 
-    // Create follow relationships: user0 follows user1, user2; user1 follows user2, user3, etc.
-    for (let i = 0; i < 9; i++) {
-        const follower = users[i];
-        const followee = users[i + 1];
-        await follower.follow(followee._id);
+    // Create follow relationships: user0 follows user1; user1 follows user2; etc.
+    for (let i = 0; i < USERS_COUNT - 1; i++) {
+        await users[i].follow(users[i + 1]._id);
     }
     // user9 follows user0 (circular)
-    await users[9].follow(users[0]._id);
+    await users[USERS_COUNT - 1].follow(users[0]._id);
 
-    // Create favorites: each user favorites some articles
-    for (let i = 0; i < 10; i++) {
+    // Create favorites: each user favorites 5 articles (not their own)
+    for (let i = 0; i < USERS_COUNT; i++) {
         const user = users[i];
-        // Each user favorites 5 articles (not their own)
-        for (let j = 0; j < 5; j++) {
-            const articleIndex = (i * 5 + j) % 50;
+        for (let j = 0; j < ARTICLES_PER_USER; j++) {
+            const articleIndex = (i * ARTICLES_PER_USER + j) % ARTICLES_COUNT;
             const article = articles[articleIndex];
             if (article.author.toString() !== user._id.toString()) {
                 await user.favorite(article._id);
@@ -90,10 +136,10 @@ async function buildCorpus(): Promise<Corpus> {
 
     // Create comments: 3 comments per article (from different users)
     const comments: CommentDoc[] = [];
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < ARTICLES_COUNT; i++) {
         const article = articles[i];
-        for (let j = 0; j < 3; j++) {
-            const commentAuthor = users[(i + j + 1) % 10]; // Different author
+        for (let j = 0; j < COMMENTS_PER_ARTICLE; j++) {
+            const commentAuthor = users[(i + j + 1) % USERS_COUNT];
             const comment = new Comment({
                 body: `Comment ${j + 1} on article ${i + 1} by ${commentAuthor.username}`,
                 author: commentAuthor._id,
@@ -106,26 +152,6 @@ async function buildCorpus(): Promise<Corpus> {
     }
 
     return { users, articles, comments };
-}
-
-function getArticleDTO(article: any, user: any = false) {
-    return {
-        slug: article.slug,
-        title: article.title,
-        description: article.description,
-        body: article.body,
-        createdAt: article.createdAt,
-        updatedAt: article.updatedAt,
-        tagList: article.tagList,
-        favorited: user ? user.favouriteArticles.some((id: mongoose.Types.ObjectId) => id.equals(article._id)) : false,
-        favoritesCount: article.favouritesCount,
-        author: {
-            username: '',
-            bio: '',
-            image: '',
-            following: false,
-        },
-    };
 }
 
 describe('ArticleModule — HTTP Characterization Tests', () => {
@@ -143,7 +169,7 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
     // ========================================================================
     // HELPER: Validate ArticleDTO shape
     // ========================================================================
-    const expectArticleDTO = (article: any) => {
+    const expectArticleDTO = (article: ArticleDTO) => {
         expect(article).toHaveProperty('slug');
         expect(article).toHaveProperty('title');
         expect(article).toHaveProperty('description');
@@ -175,10 +201,9 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
             expect(response.body).toHaveProperty('articles');
             expect(response.body).toHaveProperty('articlesCount');
             expect(Array.isArray(response.body.articles)).toBe(true);
-            expect(response.body.articles.length).toBeLessThanOrEqual(20);
-            expect(response.body.articlesCount).toBe(50);
+            expect(response.body.articles.length).toBeLessThanOrEqual(DEFAULT_LIMIT);
+            expect(response.body.articlesCount).toBe(ARTICLES_COUNT);
 
-            // Check ArticleDTO shape for first article
             expectArticleDTO(response.body.articles[0]);
         });
 
@@ -203,7 +228,7 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
             const response = await agent.get(`/api/articles?tag=${tag}`);
 
             expect(response.status).toBe(200);
-            expect(response.body.articles.every((a: any) => a.tagList.includes(tag))).toBe(true);
+            expect(response.body.articles.every((a: ArticleDTO) => a.tagList.includes(tag))).toBe(true);
         });
 
         it('filters by author username', async () => {
@@ -211,18 +236,16 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
             const response = await agent.get(`/api/articles?author=${author.username}`);
 
             expect(response.status).toBe(200);
-            expect(response.body.articles.every((a: any) => a.author.username === author.username)).toBe(true);
+            expect(response.body.articles.every((a: ArticleDTO) => a.author.username === author.username)).toBe(true);
         });
 
         it('filters by favorited username', async () => {
             const favoriter = corpus.users[0];
-            // Use a large limit to get all favorited articles, authenticate as the favoriter
             const response = await agent
                 .get(`/api/articles?favorited=${favoriter.username}&limit=100`)
                 .set(authHeader(favoriter));
 
             expect(response.status).toBe(200);
-            // All returned articles should be favorited by the authenticated user
             for (const article of response.body.articles) {
                 expect(article.favorited).toBe(true);
             }
@@ -240,53 +263,43 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
             const response = await agent.get('/api/articles?author=nonexistentuser123');
 
             expect(response.status).toBe(200);
-            // Current behavior: when author not found, no author filter is applied, returns all articles
-            expect(response.body.articlesCount).toBe(50);
+            expect(response.body.articlesCount).toBe(ARTICLES_COUNT);
         });
 
         it('returns all articles when favorited user does not exist (current behavior)', async () => {
             const response = await agent.get('/api/articles?favorited=nonexistentuser123');
 
             expect(response.status).toBe(200);
-            // Current behavior: when favorited user not found, no filter is applied, returns all articles
-            expect(response.body.articlesCount).toBe(50);
+            expect(response.body.articlesCount).toBe(ARTICLES_COUNT);
         });
 
         it('includes favorited=true when authenticated user has favorited', async () => {
             const user = corpus.users[0];
-            const favoritedArticle = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const favoritedArticle = findFavoritedArticle(user);
 
-            if (favoritedArticle) {
-                // Use large limit to ensure article is in results
-                const response = await agent
-                    .get('/api/articles?limit=100')
-                    .set(authHeader(user));
+            const response = await agent
+                .get('/api/articles?limit=100')
+                .set(authHeader(user));
 
-                expect(response.status).toBe(200);
-                const article = response.body.articles.find((a: any) => a.slug === favoritedArticle.slug);
-                expect(article).toBeDefined();
-                expect(article.favorited).toBe(true);
-            }
+            expect(response.status).toBe(200);
+            const article = response.body.articles.find((a: ArticleDTO) => a.slug === favoritedArticle!.slug);
+            expect(article).toBeDefined();
+            expect(article!.favorited).toBe(true);
         });
 
         it('includes following=true on author when authenticated user follows them', async () => {
             const user = corpus.users[0]; // follows user1
             const author = corpus.users[1];
-            const authorArticle = corpus.articles.find(a => a.author.toString() === author._id.toString());
+            const authorArticle = findArticleByAuthor(author);
 
-            if (authorArticle) {
-                // Use large limit to ensure article is in results
-                const response = await agent
-                    .get('/api/articles?limit=100')
-                    .set(authHeader(user));
+            const response = await agent
+                .get('/api/articles?limit=100')
+                .set(authHeader(user));
 
-                expect(response.status).toBe(200);
-                const article = response.body.articles.find((a: any) => a.slug === authorArticle.slug);
-                expect(article).toBeDefined();
-                expect(article.author.following).toBe(true);
-            }
+            expect(response.status).toBe(200);
+            const article = response.body.articles.find((a: ArticleDTO) => a.slug === authorArticle!.slug);
+            expect(article).toBeDefined();
+            expect(article!.author.following).toBe(true);
         });
 
         it('sorts articles by createdAt descending (newest first)', async () => {
@@ -313,7 +326,7 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
         });
 
         it('returns 200 with articles from followed authors when authenticated', async () => {
-            const user = corpus.users[0]; // follows user1
+            const user = corpus.users[0];
             const response = await agent
                 .get('/api/articles/feed')
                 .set(authHeader(user));
@@ -323,10 +336,8 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
             expect(response.body).toHaveProperty('articlesCount');
             expect(Array.isArray(response.body.articles)).toBe(true);
 
-            // All articles should be from followed authors
             const followedAuthorIds = user.followingUsers.map((id: mongoose.Types.ObjectId) => id.toString());
             for (const article of response.body.articles) {
-                // The author field in response contains username, need to match by username
                 const authorUser = corpus.users.find(u => u.username === article.author.username);
                 expect(authorUser).toBeDefined();
                 expect(followedAuthorIds).toContain(authorUser!._id.toString());
@@ -344,7 +355,6 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
         });
 
         it('returns empty array when user follows no authors', async () => {
-            // Create a new user who follows no one
             const loneUser = await seedUser({
                 username: 'loneuser',
                 email: 'lone@example.com',
@@ -396,33 +406,27 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('includes favorited=true when authenticated user has favorited the article', async () => {
             const user = corpus.users[0];
-            const favoritedArticle = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const favoritedArticle = findFavoritedArticle(user);
 
-            if (favoritedArticle) {
-                const response = await agent
-                    .get(`/api/articles/${favoritedArticle.slug}`)
-                    .set(authHeader(user));
+            const response = await agent
+                .get(`/api/articles/${favoritedArticle!.slug}`)
+                .set(authHeader(user));
 
-                expect(response.status).toBe(200);
-                expect(response.body.article.favorited).toBe(true);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.favorited).toBe(true);
         });
 
         it('includes following=true on author when authenticated user follows them', async () => {
             const user = corpus.users[0]; // follows user1
             const author = corpus.users[1];
-            const authorArticle = corpus.articles.find(a => a.author.toString() === author._id.toString());
+            const authorArticle = findArticleByAuthor(author);
 
-            if (authorArticle) {
-                const response = await agent
-                    .get(`/api/articles/${authorArticle.slug}`)
-                    .set(authHeader(user));
+            const response = await agent
+                .get(`/api/articles/${authorArticle!.slug}`)
+                .set(authHeader(user));
 
-                expect(response.status).toBe(200);
-                expect(response.body.article.author.following).toBe(true);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.author.following).toBe(true);
         });
 
         it('returns favorited=false and following=false when unauthenticated', async () => {
@@ -631,13 +635,12 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('returns 200 when authenticated user is not the author (current behavior - no author check)', async () => {
             const article = corpus.articles[0];
-            const nonAuthor = corpus.users[1]; // different user
+            const nonAuthor = corpus.users[1];
             const response = await agent
                 .put(`/api/articles/${article.slug}`)
                 .set(authHeader(nonAuthor))
                 .send({ article: { title: 'Updated Title' } });
 
-            // Current behavior: updateArticle doesn't check authorship, allows any authenticated user to update
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('article');
             expect(response.body.article.title).toBe('Updated Title');
@@ -655,103 +658,89 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('returns 200 with updated ArticleDTO when author updates title', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                const response = await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { title: 'Updated Title' } });
+            const response = await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { title: 'Updated Title' } });
 
-                expect(response.status).toBe(200);
-                expect(response.body).toHaveProperty('article');
-                expectArticleDTO(response.body.article);
-                expect(response.body.article.title).toBe('Updated Title');
-                expect(response.body.article.slug).toBe('updated-title'); // slug updates with title
-            }
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('article');
+            expectArticleDTO(response.body.article);
+            expect(response.body.article.title).toBe('Updated Title');
+            expect(response.body.article.slug).toBe('updated-title');
         });
 
         it('returns 200 with updated ArticleDTO when author updates description', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                const response = await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { description: 'Updated description' } });
+            const response = await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { description: 'Updated description' } });
 
-                expect(response.status).toBe(200);
-                expect(response.body.article.description).toBe('Updated description');
-                // slug should not change when only description updates
-                expect(response.body.article.slug).toBe(userArticle.slug);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.description).toBe('Updated description');
+            expect(response.body.article.slug).toBe(userArticle!.slug);
         });
 
         it('returns 200 with updated ArticleDTO when author updates body', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                const response = await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { body: 'Updated body content' } });
+            const response = await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { body: 'Updated body content' } });
 
-                expect(response.status).toBe(200);
-                expect(response.body.article.body).toBe('Updated body content');
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.body).toBe('Updated body content');
         });
 
         it('returns 200 with updated ArticleDTO when author updates tagList', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                const response = await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { tagList: ['newtag1', 'newtag2'] } });
+            const response = await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { tagList: ['newtag1', 'newtag2'] } });
 
-                expect(response.status).toBe(200);
-                expect(response.body.article.tagList).toEqual(['newtag1', 'newtag2']);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.tagList).toEqual(['newtag1', 'newtag2']);
         });
 
         it('performs partial update (only provided fields change)', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
+            const originalDescription = userArticle!.description;
+            const originalBody = userArticle!.body;
 
-            if (userArticle) {
-                const originalDescription = userArticle.description;
-                const originalBody = userArticle.body;
+            const response = await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { title: 'Only Title Changed' } });
 
-                const response = await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { title: 'Only Title Changed' } });
-
-                expect(response.status).toBe(200);
-                expect(response.body.article.title).toBe('Only Title Changed');
-                expect(response.body.article.description).toBe(originalDescription);
-                expect(response.body.article.body).toBe(originalBody);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.title).toBe('Only Title Changed');
+            expect(response.body.article.description).toBe(originalDescription);
+            expect(response.body.article.body).toBe(originalBody);
         });
 
         it('persists updates in database', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                await agent
-                    .put(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user))
-                    .send({ article: { title: 'Persisted Update' } });
+            await agent
+                .put(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user))
+                .send({ article: { title: 'Persisted Update' } });
 
-                const updated = await Article.findOne({ slug: 'persisted-update' }).exec();
-                expect(updated).not.toBeNull();
-                expect(updated?.title).toBe('Persisted Update');
-            }
+            const updated = await Article.findOne({ slug: 'persisted-update' }).exec();
+            expect(updated).not.toBeNull();
+            expect(updated?.title).toBe('Persisted Update');
         });
     });
 
@@ -788,31 +777,27 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('returns 200 with success message when author deletes their article', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                const response = await agent
-                    .delete(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user));
+            const response = await agent
+                .delete(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user));
 
-                expect(response.status).toBe(200);
-                expect(response.body).toHaveProperty('message');
-                expect(response.body.message).toBe('Article successfully deleted!!!');
-            }
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('message');
+            expect(response.body.message).toBe('Article successfully deleted!!!');
         });
 
         it('removes article from database', async () => {
             const user = corpus.users[0];
-            const userArticle = corpus.articles.find(a => a.author.toString() === user._id.toString());
+            const userArticle = findUserArticle(user);
 
-            if (userArticle) {
-                await agent
-                    .delete(`/api/articles/${userArticle.slug}`)
-                    .set(authHeader(user));
+            await agent
+                .delete(`/api/articles/${userArticle!.slug}`)
+                .set(authHeader(user));
 
-                const deleted = await Article.findOne({ slug: userArticle.slug }).exec();
-                expect(deleted).toBeNull();
-            }
+            const deleted = await Article.findOne({ slug: userArticle!.slug }).exec();
+            expect(deleted).toBeNull();
         });
     });
 
@@ -838,80 +823,57 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('returns 200 with updated ArticleDTO (favorited=true, favoritesCount incremented)', async () => {
             const user = corpus.users[0];
-            // Find an article not yet favorited by this user
-            const article = corpus.articles.find(a =>
-                !user.favouriteArticles.some(id => id.equals(a._id)) &&
-                a.author.toString() !== user._id.toString()
-            );
+            const article = findUnfavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            const response = await agent
+                .post(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const response = await agent
-                    .post(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                expect(response.status).toBe(200);
-                expect(response.body).toHaveProperty('article');
-                expectArticleDTO(response.body.article);
-                expect(response.body.article.favorited).toBe(true);
-                expect(response.body.article.favoritesCount).toBe(originalCount + 1);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('article');
+            expectArticleDTO(response.body.article);
+            expect(response.body.article.favorited).toBe(true);
+            expect(response.body.article.favoritesCount).toBe(originalCount + 1);
         });
 
         it('increments favoritesCount in database', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                !user.favouriteArticles.some(id => id.equals(a._id)) &&
-                a.author.toString() !== user._id.toString()
-            );
+            const article = findUnfavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            await agent
+                .post(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                await agent
-                    .post(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                const updated = await Article.findById(article._id).exec();
-                expect(updated?.favouritesCount).toBe(originalCount + 1);
-            }
+            const updated = await Article.findById(article!._id).exec();
+            expect(updated?.favouritesCount).toBe(originalCount + 1);
         });
 
         it('adds article to user favouriteArticles array', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                !user.favouriteArticles.some(id => id.equals(a._id)) &&
-                a.author.toString() !== user._id.toString()
-            );
+            const article = findUnfavoritedArticle(user);
 
-            if (article) {
-                await agent
-                    .post(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
+            await agent
+                .post(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const updatedUser = await User.findById(user._id).exec();
-                expect(updatedUser?.favouriteArticles.some(id => id.equals(article._id))).toBe(true);
-            }
+            const updatedUser = await User.findById(user._id).exec();
+            expect(updatedUser?.favouriteArticles.some(id => id.equals(article!._id))).toBe(true);
         });
 
         it('can favorite already favorited article (idempotent)', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const article = findFavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            const response = await agent
+                .post(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const response = await agent
-                    .post(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                expect(response.status).toBe(200);
-                expect(response.body.article.favorited).toBe(true);
-                expect(response.body.article.favoritesCount).toBe(originalCount); // No double count
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.favorited).toBe(true);
+            expect(response.body.article.favoritesCount).toBe(originalCount);
         });
     });
 
@@ -937,77 +899,57 @@ describe('ArticleModule — HTTP Characterization Tests', () => {
 
         it('returns 200 with updated ArticleDTO (favorited=false, favoritesCount decremented)', async () => {
             const user = corpus.users[0];
-            // Find an article already favorited by this user
-            const article = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const article = findFavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            const response = await agent
+                .delete(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const response = await agent
-                    .delete(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                expect(response.status).toBe(200);
-                expect(response.body).toHaveProperty('article');
-                expectArticleDTO(response.body.article);
-                expect(response.body.article.favorited).toBe(false);
-                expect(response.body.article.favoritesCount).toBe(originalCount - 1);
-            }
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('article');
+            expectArticleDTO(response.body.article);
+            expect(response.body.article.favorited).toBe(false);
+            expect(response.body.article.favoritesCount).toBe(originalCount - 1);
         });
 
         it('decrements favoritesCount in database', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const article = findFavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            await agent
+                .delete(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                await agent
-                    .delete(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                const updated = await Article.findById(article._id).exec();
-                expect(updated?.favouritesCount).toBe(originalCount - 1);
-            }
+            const updated = await Article.findById(article!._id).exec();
+            expect(updated?.favouritesCount).toBe(originalCount - 1);
         });
 
         it('removes article from user favouriteArticles array', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const article = findFavoritedArticle(user);
 
-            if (article) {
-                await agent
-                    .delete(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
+            await agent
+                .delete(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const updatedUser = await User.findById(user._id).exec();
-                expect(updatedUser?.favouriteArticles.some(id => id.equals(article._id))).toBe(false);
-            }
+            const updatedUser = await User.findById(user._id).exec();
+            expect(updatedUser?.favouriteArticles.some(id => id.equals(article!._id))).toBe(false);
         });
 
         it('can unfavorite already unfavorited article (idempotent)', async () => {
             const user = corpus.users[0];
-            const article = corpus.articles.find(a =>
-                !user.favouriteArticles.some(id => id.equals(a._id))
-            );
+            const article = findUnfavoritedArticle(user);
+            const originalCount = article!.favouritesCount;
 
-            if (article) {
-                const originalCount = article.favouritesCount;
+            const response = await agent
+                .delete(`/api/articles/${article!.slug}/favorite`)
+                .set(authHeader(user));
 
-                const response = await agent
-                    .delete(`/api/articles/${article.slug}/favorite`)
-                    .set(authHeader(user));
-
-                expect(response.status).toBe(200);
-                expect(response.body.article.favorited).toBe(false);
-                expect(response.body.article.favoritesCount).toBe(originalCount); // No double decrement
-            }
+            expect(response.status).toBe(200);
+            expect(response.body.article.favorited).toBe(false);
+            expect(response.body.article.favoritesCount).toBe(originalCount);
         });
     });
 });
