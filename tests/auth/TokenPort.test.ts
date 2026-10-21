@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import jwt from 'jsonwebtoken';
 import { JwtAdapter, InMemoryTokenAdapter, TokenPayload } from '@/src/modules/auth/ports/TokenPort';
 
 describe('TokenPort Adapters', () => {
     const samplePayload: TokenPayload = {
         userId: 'user-123',
         email: 'test@example.com',
-        password: 'hashed-password',
     };
 
     describe('JwtAdapter', () => {
@@ -21,7 +21,6 @@ describe('TokenPort Adapters', () => {
 
             expect(decoded.user.userId).toBe(samplePayload.userId);
             expect(decoded.user.email).toBe(samplePayload.email);
-            expect(decoded.user.password).toBe(samplePayload.password);
             expect(decoded.iat).toBeDefined();
             expect(decoded.exp).toBeDefined();
             expect(decoded.exp).toBeGreaterThan(decoded.iat);
@@ -39,7 +38,6 @@ describe('TokenPort Adapters', () => {
             // Create an adapter with very short expiry
             const expiredAdapter = new JwtAdapter();
             // Manually create an expired token using jsonwebtoken directly
-            const jwt = require('jsonwebtoken');
             const expiredToken = jwt.sign(
                 { user: samplePayload },
                 process.env.ACCESS_TOKEN_SECRET!,
@@ -64,13 +62,14 @@ describe('TokenPort Adapters', () => {
             expect(decoded).toBeNull();
         });
 
-        it('should return null when decoding a tampered token', () => {
+        it('should decode a tampered token without verification (signature not checked)', () => {
             const token = adapter.sign(samplePayload);
             const tamperedToken = token.slice(0, -5) + 'xxxxx';
             const decoded = adapter.decode(tamperedToken);
-            // jsonwebtoken decode doesn't verify signature, so it may still decode
-            // but the payload will be corrupted
-            expect(decoded).toBeDefined(); // decode doesn't throw, may return payload
+            // jsonwebtoken decode doesn't verify signature, so it still decodes the payload
+            expect(decoded).not.toBeNull();
+            expect(decoded!.user.userId).toBe(samplePayload.userId);
+            expect(decoded!.user.email).toBe(samplePayload.email);
         });
     });
 
@@ -87,7 +86,6 @@ describe('TokenPort Adapters', () => {
 
             expect(decoded.user.userId).toBe(samplePayload.userId);
             expect(decoded.user.email).toBe(samplePayload.email);
-            expect(decoded.user.password).toBe(samplePayload.password);
             expect(decoded.iat).toBeDefined();
             expect(decoded.exp).toBeDefined();
             expect(decoded.exp).toBeGreaterThan(decoded.iat);
@@ -100,18 +98,18 @@ describe('TokenPort Adapters', () => {
             expect(decoded).not.toBeNull();
             expect(decoded!.user.userId).toBe(samplePayload.userId);
             expect(decoded!.user.email).toBe(samplePayload.email);
-            expect(decoded!.user.password).toBe(samplePayload.password);
         });
 
         it('should reject a token not in the store', () => {
             expect(() => adapter.verify('test-token-unknown-12345')).toThrow('Invalid token: not found in store');
         });
 
-        it('should return null when decoding a token not in store', () => {
+        it('should partially decode unknown tokens matching the expected format', () => {
             const decoded = adapter.decode('test-token-unknown-12345');
-            // For unknown tokens matching the format, it returns a partial decode
+            // For unknown tokens matching the format, it returns a partial decode with empty email
             expect(decoded).not.toBeNull();
             expect(decoded!.user.userId).toBe('unknown');
+            expect(decoded!.user.email).toBe('');
         });
 
         it('should return null for completely malformed token', () => {

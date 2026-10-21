@@ -1,12 +1,17 @@
 import jwt from 'jsonwebtoken';
 
+/** Token expiration: 1 day in seconds */
+const TOKEN_EXPIRY_SECONDS = 86_400;
+/** Token expiration string for jsonwebtoken */
+const TOKEN_EXPIRY_STRING = '1d';
+
 /**
- * Payload structure for token operations
+ * Payload structure for token operations.
+ * Excludes sensitive fields like password.
  */
 export interface TokenPayload {
     userId: string;
     email: string;
-    password: string;
 }
 
 /**
@@ -55,7 +60,7 @@ export class JwtAdapter implements TokenPort {
             throw new Error('ACCESS_TOKEN_SECRET environment variable is required for JwtAdapter');
         }
         this.secret = secret;
-        this.options = { expiresIn: '1d' };
+        this.options = { expiresIn: TOKEN_EXPIRY_STRING };
     }
 
     sign(payload: TokenPayload): string {
@@ -95,18 +100,21 @@ export class InMemoryTokenAdapter implements TokenPort {
         return token;
     }
 
+    private createDecodedToken(payload: TokenPayload): DecodedToken {
+        const now = Math.floor(Date.now() / 1000);
+        return {
+            user: payload,
+            iat: now,
+            exp: now + TOKEN_EXPIRY_SECONDS,
+        };
+    }
+
     verify(token: string): DecodedToken {
         const payload = this.tokenStore.get(token);
         if (!payload) {
             throw new Error('Invalid token: not found in store');
         }
-        // Simulate JWT decoded structure with iat/exp
-        const now = Math.floor(Date.now() / 1000);
-        return {
-            user: payload,
-            iat: now,
-            exp: now + 86400, // 1 day
-        };
+        return this.createDecodedToken(payload);
     }
 
     decode(token: string): DecodedToken | null {
@@ -118,19 +126,14 @@ export class InMemoryTokenAdapter implements TokenPort {
                 const userId = match[1];
                 const now = Math.floor(Date.now() / 1000);
                 return {
-                    user: { userId, email: '', password: '' },
+                    user: { userId, email: '' },
                     iat: now,
-                    exp: now + 86400,
+                    exp: now + TOKEN_EXPIRY_SECONDS,
                 };
             }
             return null;
         }
-        const now = Math.floor(Date.now() / 1000);
-        return {
-            user: payload,
-            iat: now,
-            exp: now + 86400,
-        };
+        return this.createDecodedToken(payload);
     }
 
     /**
@@ -140,5 +143,3 @@ export class InMemoryTokenAdapter implements TokenPort {
         this.tokenStore.clear();
     }
 }
-
-export default TokenPort;
