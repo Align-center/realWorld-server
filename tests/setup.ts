@@ -10,11 +10,8 @@ beforeAll(async () => {
     process.env.ACCESS_TOKEN_SECRET = 'test-secret-key-for-testing';
     process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-key-for-testing';
 
-    // Try to use pre-downloaded MongoDB binary for ARM64 Ubuntu 22.04
-    const mongoBinaryPath = '/tmp/mongodb-binary/mongodb-linux-aarch64-ubuntu2204-7.0.14/bin/mongod';
-    const binaryOptions = fs.existsSync(mongoBinaryPath)
-        ? { binary: { systemBinary: mongoBinaryPath } }
-        : { binary: { version: '7.0.14' } };
+    // Use MongoDB 7.0.5 which has ARM64 Ubuntu 22.04 support
+    const binaryOptions = { binary: { version: '7.0.5' } };
 
     mongoServer = await MongoMemoryServer.create(binaryOptions);
     const uri = mongoServer.getUri();
