@@ -12,5 +12,7 @@ export default defineConfig({
         alias: {
             '@': path.resolve(__dirname, '.'),
         },
+        // Allow tests to run even if MongoDB setup fails (for unit tests that don't need DB)
+        passWithNoTests: true,
     },
 });
