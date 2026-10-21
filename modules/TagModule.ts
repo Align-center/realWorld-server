@@ -1,4 +1,4 @@
-import Article from '@/models/Article';
+import Article from '../models/Article';
 
 export const TagModule = {
     /**
@@ -7,7 +7,7 @@ export const TagModule = {
      */
     async getAllTags(): Promise<string[]> {
         const tags = await Article.find().distinct('tagList').exec();
-        return tags.sort();
+        return [...tags].sort();
     }
 };
 
