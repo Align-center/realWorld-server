@@ -1,0 +1,16 @@
+{
+  "detail": true,
+  "catch": true,
+  "strict": true,
+  "excludeFiles": "**/*.d.ts",
+  "includeFiles": [
+    "src/**/*.ts",
+    "controllers/**/*.ts",
+    "models/**/*.ts",
+    "routes/**/*.ts",
+    "middleware/**/*.ts",
+    "config/**/*.ts",
+    "api/**/*.ts"
+  ],
+  "jsonOutput": true
+}

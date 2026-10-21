@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: npm run build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: ./.github/actions/setup
+
+      - name: Run tests
+        run: npm test
+
+  metrics:
+    name: Metrics
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    steps:
+      - uses: ./.github/actions/setup
+
+      - name: Run complexity analysis
+        run: npm run lint:complexity || true
+
+      - name: Run coverage
+        run: npm run test:coverage || true
+
+      - name: Run type coverage
+        run: npm run type:coverage || true
+
+      - name: Upload complexity metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: complexity-metrics
+          path: metrics/complexity.json
+          retention-days: 30
+
+      - name: Upload coverage metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-metrics
+          path: |
+            metrics/coverage.json
+            coverage/lcov.info
+          retention-days: 30
+
+      - name: Upload type coverage metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: type-coverage-metrics
+          path: metrics/type-coverage.json
+          retention-days: 30
+
+      - name: Post metrics comment
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: node scripts/post-metrics-comment.mjs
