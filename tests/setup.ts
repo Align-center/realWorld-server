@@ -2,8 +2,8 @@ import { beforeAll, afterAll, beforeEach } from 'vitest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 
-// Force Ubuntu 24.04 distro for MongoDB binary download (Debian arm64 builds don't exist)
-process.env.MONGOMS_DISTRO = 'ubuntu-24.04';
+// Force Ubuntu 22.04 distro for MongoDB binary download (Debian arm64 builds don't exist)
+process.env.MONGOMS_DISTRO = 'ubuntu-22.04';
 
 let mongoServer: MongoMemoryServer | null = null;
 let mongoConnected = false;
@@ -13,7 +13,7 @@ beforeAll(async () => {
   process.env.ACCESS_TOKEN_SECRET = 'test-secret-key-for-testing';
   process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-key-for-testing';
 
-// Use Ubuntu 22.04 ARM64 binaries (compatible with Debian 12)
+  // Use Ubuntu 22.04 ARM64 binaries (compatible with Debian 12)
   // MongoDB doesn't provide ARM64 binaries for Debian 12, so we use Ubuntu 22.04
   // via the MONGOMS_DISTRO environment variable
   process.env.MONGOMS_DISTRO = 'ubuntu-22.04';
