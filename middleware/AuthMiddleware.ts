@@ -40,13 +40,13 @@ export class AuthMiddleware {
     }
 
     /**
-     * Verify token and attach user info to request.
-     * Returns decoded token on success, throws on failure.
+     * Verify token using the token port.
+     * Throws ForbiddenError on failure.
      */
     private async verifyToken(token: string): Promise<DecodedToken> {
         try {
             return this.tokenPort.verify(token);
-        } catch (error) {
+        } catch {
             throw new ForbiddenError();
         }
     }
@@ -65,28 +65,41 @@ export class AuthMiddleware {
     }
 
     /**
+     * Core authentication logic shared by required and optional modes.
+     */
+    private async authenticate(req: Request, res: Response, next: NextFunction, requireAuth: boolean): Promise<void> {
+        const token = this.extractToken(req);
+
+        if (!token) {
+            if (requireAuth) {
+                next(new UnauthorizedError());
+            } else {
+                req.loggedin = false;
+                next();
+            }
+            return;
+        }
+
+        try {
+            const decoded = await this.verifyToken(token);
+            if (!requireAuth) {
+                req.loggedin = true;
+            }
+            this.attachUser(req, decoded);
+            next();
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
      * Middleware factory for required authentication.
      * - Missing token → 401 Unauthorized
      * - Invalid/expired token → 403 Forbidden
      * - Valid token → attaches userId, userEmail to req and continues
      */
-    required = (): ((req: Request, res: Response, next: NextFunction) => Promise<void>) => {
-        return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-            const token = this.extractToken(req);
-
-            if (!token) {
-                next(new UnauthorizedError());
-                return;
-            }
-
-            try {
-                const decoded = await this.verifyToken(token);
-                this.attachUser(req, decoded);
-                next();
-            } catch (error) {
-                next(error);
-            }
-        };
+    required = () => async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        await this.authenticate(req, res, next, true);
     };
 
     /**
@@ -95,25 +108,8 @@ export class AuthMiddleware {
      * - Invalid/expired token → 403 Forbidden
      * - Valid token → sets req.loggedin = true, attaches userId, userEmail and continues
      */
-    optional = (): ((req: Request, res: Response, next: NextFunction) => Promise<void>) => {
-        return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-            const token = this.extractToken(req);
-
-            if (!token) {
-                req.loggedin = false;
-                next();
-                return;
-            }
-
-            try {
-                const decoded = await this.verifyToken(token);
-                req.loggedin = true;
-                this.attachUser(req, decoded);
-                next();
-            } catch (error) {
-                next(error);
-            }
-        };
+    optional = () => async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        await this.authenticate(req, res, next, false);
     };
 }
 
