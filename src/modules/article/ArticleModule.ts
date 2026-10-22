@@ -1,7 +1,8 @@
 import Article from '@/models/Article';
-import User, { IUser } from '@/models/User';
+import User from '@/models/User';
 import Comment from '@/models/Comment';
-import mongoose from 'mongoose';
+import type { IUser } from '@/models/User';
+import type mongoose from 'mongoose';
 import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } from '../../shared/errors/AppError';
 
 export interface CreateArticleInput {
@@ -62,6 +63,59 @@ export interface CommentResponse {
     };
 }
 
+const DEFAULT_LIMIT = 20;
+const DEFAULT_OFFSET = 0;
+const REQUIRED_CREATE_FIELDS = ['title', 'description', 'body'] as const;
+
+/**
+ * Finds a user by ID or throws UnauthorizedError.
+ */
+async function getUserOrThrow(userId: string): Promise<IUser> {
+    const user = await User.findById(userId).exec();
+    if (!user) {
+        throw new UnauthorizedError('User Not Found');
+    }
+    return user;
+}
+
+/**
+ * Finds an article by slug or throws NotFoundError.
+ */
+async function getArticleOrThrow(slug: string) {
+    const article = await Article.findOne({ slug }).exec();
+    if (!article) {
+        throw new NotFoundError('Article Not Found');
+    }
+    return article;
+}
+
+/**
+ * Builds the filter query for getList based on query parameters.
+ */
+async function buildArticleFilter(query: ListArticlesQuery): Promise<mongoose.FilterQuery<typeof Article>> {
+    const filter: mongoose.FilterQuery<typeof Article> = {};
+
+    if (query.tag) {
+        filter.tagList = { $in: [query.tag] };
+    }
+
+    if (query.author) {
+        const author = await User.findOne({ username: query.author }).exec();
+        if (author) {
+            filter.author = author._id;
+        }
+    }
+
+    if (query.favorited) {
+        const favoriter = await User.findOne({ username: query.favorited }).exec();
+        if (favoriter) {
+            filter._id = { $in: favoriter.favouriteArticles };
+        }
+    }
+
+    return filter;
+}
+
 /**
  * ArticleModule encapsulates all article-related business logic.
  * Provides a clean interface for article operations without HTTP concerns.
@@ -76,18 +130,9 @@ export const ArticleModule = {
      * @throws ValidationError if required fields are missing
      */
     async create(authorId: string, input: CreateArticleInput): Promise<ArticleResponse> {
-        const author = await User.findById(authorId).exec();
+        const author = await getUserOrThrow(authorId);
 
-        if (!author) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const { title, description, body, tagList } = input;
-
-        const missingFields: string[] = [];
-        if (!title) missingFields.push('title');
-        if (!description) missingFields.push('description');
-        if (!body) missingFields.push('body');
+        const missingFields = REQUIRED_CREATE_FIELDS.filter((field) => !input[field]);
 
         if (missingFields.length > 0) {
             const fieldErrors: Record<string, string[]> = {};
@@ -97,15 +142,15 @@ export const ArticleModule = {
             throw new ValidationError('Validation failed', fieldErrors);
         }
 
+        const { title, description, body, tagList } = input;
+
         const article = await Article.create({
             title,
             description,
             body,
             author: authorId,
-            tagList: Array.isArray(tagList) && tagList.length > 0 ? tagList : []
+            tagList: Array.isArray(tagList) && tagList.length > 0 ? tagList : [],
         });
-
-        await article.save();
 
         return article.toArticleResponse(author);
     },
@@ -118,12 +163,7 @@ export const ArticleModule = {
      * @throws NotFoundError if article not found
      */
     async getBySlug(slug: string, viewer: IUser | false = false): Promise<ArticleResponse> {
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
-
+        const article = await getArticleOrThrow(slug);
         return article.toArticleResponse(viewer);
     },
 
@@ -134,28 +174,10 @@ export const ArticleModule = {
      * @returns Paginated list of articles with count
      */
     async getList(query: ListArticlesQuery, viewer: IUser | false = false): Promise<ArticlesListResponse> {
-        const limit = query.limit || 20;
-        const offset = query.offset || 0;
+        const limit = query.limit ?? DEFAULT_LIMIT;
+        const offset = query.offset ?? DEFAULT_OFFSET;
 
-        const filter: mongoose.FilterQuery<typeof Article> = {};
-
-        if (query.tag) {
-            filter.tagList = { $in: [query.tag] };
-        }
-
-        if (query.author) {
-            const author = await User.findOne({ username: query.author }).exec();
-            if (author) {
-                filter.author = author._id;
-            }
-        }
-
-        if (query.favorited) {
-            const favoriter = await User.findOne({ username: query.favorited }).exec();
-            if (favoriter) {
-                filter._id = { $in: favoriter.favouriteArticles };
-            }
-        }
+        const filter = await buildArticleFilter(query);
 
         const [articles, articlesCount] = await Promise.all([
             Article.find(filter)
@@ -167,7 +189,7 @@ export const ArticleModule = {
         ]);
 
         const articleResponses = await Promise.all(
-            articles.map(article => article.toArticleResponse(viewer))
+            articles.map((article) => article.toArticleResponse(viewer))
         );
 
         return { articles: articleResponses, articlesCount };
@@ -181,23 +203,20 @@ export const ArticleModule = {
      * @returns Paginated list of articles from followed authors with count
      * @throws UnauthorizedError if user not found
      */
-    async getFeed(userId: string, limit: number = 20, offset: number = 0): Promise<ArticlesListResponse> {
-        const loginUser = await User.findById(userId).exec();
-
-        if (!loginUser) {
-            throw new UnauthorizedError('User Not Found');
-        }
+    async getFeed(userId: string, limit: number = DEFAULT_LIMIT, offset: number = DEFAULT_OFFSET): Promise<ArticlesListResponse> {
+        const loginUser = await getUserOrThrow(userId);
 
         const [articles, articlesCount] = await Promise.all([
             Article.find({ author: { $in: loginUser.followingUsers } })
                 .limit(limit)
                 .skip(offset)
+                .sort({ createdAt: 'desc' })
                 .exec(),
             Article.countDocuments({ author: { $in: loginUser.followingUsers } })
         ]);
 
         const articleResponses = await Promise.all(
-            articles.map(article => article.toArticleResponse(loginUser))
+            articles.map((article) => article.toArticleResponse(loginUser))
         );
 
         return { articles: articleResponses, articlesCount };
@@ -214,17 +233,8 @@ export const ArticleModule = {
      * Note: Current behavior allows any authenticated user to update (no author check)
      */
     async update(userId: string, slug: string, input: UpdateArticleInput): Promise<ArticleResponse> {
-        const loginUser = await User.findById(userId).exec();
-
-        if (!loginUser) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
+        const loginUser = await getUserOrThrow(userId);
+        const article = await getArticleOrThrow(slug);
 
         if (input.title !== undefined) {
             article.title = input.title;
@@ -254,17 +264,8 @@ export const ArticleModule = {
      * @throws ForbiddenError if user is not the author
      */
     async delete(userId: string, slug: string): Promise<{ message: string }> {
-        const loginUser = await User.findById(userId).exec();
-
-        if (!loginUser) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
+        const loginUser = await getUserOrThrow(userId);
+        const article = await getArticleOrThrow(slug);
 
         if (article.author.toString() !== loginUser._id.toString()) {
             throw new ForbiddenError('Only the author can delete their article');
@@ -284,17 +285,8 @@ export const ArticleModule = {
      * @throws NotFoundError if article not found
      */
     async favorite(userId: string, slug: string): Promise<ArticleResponse> {
-        const loginUser = await User.findById(userId).exec();
-
-        if (!loginUser) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
+        const loginUser = await getUserOrThrow(userId);
+        const article = await getArticleOrThrow(slug);
 
         await loginUser.favorite(article._id);
         const updatedArticle = await article.updateFavoriteCount();
@@ -311,17 +303,8 @@ export const ArticleModule = {
      * @throws NotFoundError if article not found
      */
     async unfavorite(userId: string, slug: string): Promise<ArticleResponse> {
-        const loginUser = await User.findById(userId).exec();
-
-        if (!loginUser) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
+        const loginUser = await getUserOrThrow(userId);
+        const article = await getArticleOrThrow(slug);
 
         await loginUser.unfavorite(article._id);
         await article.updateFavoriteCount();
@@ -339,22 +322,13 @@ export const ArticleModule = {
      * @throws NotFoundError if article not found
      */
     async addComment(userId: string, slug: string, body: string): Promise<CommentResponse> {
-        const commenter = await User.findById(userId).exec();
-
-        if (!commenter) {
-            throw new UnauthorizedError('User Not Found');
-        }
-
-        const article = await Article.findOne({ slug }).exec();
-
-        if (!article) {
-            throw new NotFoundError('Article Not Found');
-        }
+        const commenter = await getUserOrThrow(userId);
+        const article = await getArticleOrThrow(slug);
 
         const newComment = await Comment.create({
             body,
             author: commenter._id,
-            article: article._id
+            article: article._id,
         });
 
         await article.addComment(newComment._id);
