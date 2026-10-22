@@ -9,10 +9,15 @@ export default defineConfig({
         include: ['tests/**/*.test.ts'],
         testTimeout: 10000,
         hookTimeout: 10000,
-        alias: {
-            '@': path.resolve(__dirname, '.'),
-        },
         // Allow tests to run even if MongoDB setup fails (for unit tests that don't need DB)
         passWithNoTests: true,
+    },
+    resolve: {
+        alias: {
+            '@': path.resolve(__dirname, '.'),
+            '@/models': path.resolve(__dirname, './models'),
+            '@/shared': path.resolve(__dirname, './src/shared'),
+            '@/src': path.resolve(__dirname, './src'),
+        },
     },
 });
