@@ -4,6 +4,7 @@ import asyncHandler from 'express-async-handler';
 import { Response } from 'express';
 import { AuthenticatedRequest, ArticleRequestBody } from '../types/express';
 import mongoose from 'mongoose';
+import { ArticleModule } from '../src/modules/article/ArticleModule';
 import { NotFoundError, ForbiddenError, UnauthorizedError, ValidationError } from '../src/shared/errors/AppError';
 
 const createArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -126,18 +127,15 @@ const unfavoriteArticle = asyncHandler(async (req: AuthenticatedRequest, res: Re
 
 const getArticleWithSlug = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const { slug } = req.params;
+    const slugStr = Array.isArray(slug) ? slug[0] : slug;
 
-    const article = await Article.findOne({ slug }).exec();
+    const viewer: IUser | false = req.loggedin && req.userId
+        ? (await User.findById(req.userId).exec()) ?? false
+        : false;
 
-    if (!article) {
-        throw new NotFoundError('Article Not Found');
-    }
+    const article = await ArticleModule.getBySlug(slugStr, viewer);
 
-    const user = req.loggedin ? (await User.findById(req.userId).exec()) ?? false : false;
-
-    res.status(200).json({
-        article: await article.toArticleResponse(user)
-    });
+    res.status(200).json({ article });
 });
 
 const updateArticle = asyncHandler(async (req: AuthenticatedRequest, res: Response): Promise<void> => {
