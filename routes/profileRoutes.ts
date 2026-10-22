@@ -1,17 +1,17 @@
 import express from 'express';
 import { getProfile, followUser, unFollowUser } from '../controllers/profilesController';
-import verifyJWT from '../middleware/verifyJWT';
-import verifyJWTOptional from '../middleware/verifyJWTOptional';
+import getAuthMiddleware from '../middleware/AuthMiddleware';
 
 const router = express.Router();
+const authMiddleware = getAuthMiddleware();
 
 // Get profile - authentication optional
-router.get('/:username', verifyJWTOptional, getProfile);
+router.get('/:username', authMiddleware.optional(), getProfile);
 
 // Follow a user
-router.post('/:username/follow', verifyJWT, followUser);
+router.post('/:username/follow', authMiddleware.required(), followUser);
 
 // unfollow a user
-router.delete('/:username/follow', verifyJWT, unFollowUser);
+router.delete('/:username/follow', authMiddleware.required(), unFollowUser);
 
 export default router;
