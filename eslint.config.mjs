@@ -5,8 +5,10 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    ignores: ['node_modules', 'dist', 'metrics', 'coverage', '.github/', '.idea/', '.scratch/', '.sandcastle/'],
+  },
+  {
     files: ['**/*.ts'],
-    ignores: ['node_modules', 'dist', 'metrics', 'coverage'],
     rules: {
       'complexity': ['warn', { max: 10 }],
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
