@@ -5,6 +5,10 @@ import mongoose from 'mongoose';
 // Force Ubuntu 22.04 distro for MongoDB binary download (Debian arm64 builds don't exist)
 process.env.MONGOMS_DISTRO = 'ubuntu-22.04';
 
+// Set required environment variables for tests BEFORE any module imports
+process.env.ACCESS_TOKEN_SECRET = 'test-secret-key-for-testing';
+process.env.REFRESH_TOKEN_SECRET = 'test-refresh-secret-key-for-testing';
+
 let mongoServer: MongoMemoryServer | null = null;
 let mongoConnected = false;
 

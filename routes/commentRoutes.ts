@@ -1,6 +1,5 @@
 import express from 'express';
-import verifyJWT from '../middleware/verifyJWT';
-import verifyJWTOptional from '../middleware/verifyJWTOptional';
+import getAuthMiddleware from '../middleware/AuthMiddleware';
 import {
     addCommentsToArticle,
     getCommentsFromArticle,
@@ -8,11 +7,12 @@ import {
 } from '../controllers/commentsController';
 
 const router = express.Router();
+const authMiddleware = getAuthMiddleware();
 
-router.post('/:slug/comments', verifyJWT, addCommentsToArticle);
+router.post('/:slug/comments', authMiddleware.required(), addCommentsToArticle);
 
-router.get('/:slug/comments', verifyJWTOptional, getCommentsFromArticle);
+router.get('/:slug/comments', authMiddleware.optional(), getCommentsFromArticle);
 
-router.delete('/:slug/comments/:id', verifyJWT, deleteComment);
+router.delete('/:slug/comments/:id', authMiddleware.required(), deleteComment);
 
 export default router;

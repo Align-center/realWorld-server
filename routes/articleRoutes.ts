@@ -1,6 +1,5 @@
 import express from 'express';
-import verifyJWT from '../middleware/verifyJWT';
-import verifyJWTOptional from '../middleware/verifyJWTOptional';
+import getAuthMiddleware from '../middleware/AuthMiddleware';
 import {
     createArticle,
     deleteArticle,
@@ -13,22 +12,23 @@ import {
 } from '../controllers/articlesController';
 
 const router = express.Router();
+const authMiddleware = getAuthMiddleware();
 
 // feed endpoint must go before :slug endpoint
-router.get('/feed', verifyJWT, feedArticles);
+router.get('/feed', authMiddleware.required(), feedArticles);
 
-router.get('/', verifyJWTOptional, listArticles);
+router.get('/', authMiddleware.optional(), listArticles);
 
-router.get('/:slug', verifyJWTOptional, getArticleWithSlug);
+router.get('/:slug', authMiddleware.optional(), getArticleWithSlug);
 
-router.post('/', verifyJWT, createArticle);
+router.post('/', authMiddleware.required(), createArticle);
 
-router.delete('/:slug', verifyJWT, deleteArticle);
+router.delete('/:slug', authMiddleware.required(), deleteArticle);
 
-router.post('/:slug/favorite', verifyJWT, favoriteArticle);
+router.post('/:slug/favorite', authMiddleware.required(), favoriteArticle);
 
-router.delete('/:slug/favorite', verifyJWT, unfavoriteArticle);
+router.delete('/:slug/favorite', authMiddleware.required(), unfavoriteArticle);
 
-router.put('/:slug', verifyJWT, updateArticle);
+router.put('/:slug', authMiddleware.required(), updateArticle);
 
 export default router;
