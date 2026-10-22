@@ -19,6 +19,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
       - name: Build
@@ -29,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
       - name: Run tests
@@ -39,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, test]
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
       - name: Run complexity analysis
