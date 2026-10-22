@@ -1,10 +1,28 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import User from '@/models/User';
 import { AuthModule } from '@/src/modules/auth/AuthModule';
 import { InMemoryTokenAdapter } from '@/src/modules/auth/ports/TokenPort';
 import { ValidationError, NotFoundError, UnauthorizedError, ConflictError } from '@/src/shared/errors/AppError';
+
+const TEST_PASSWORD = 'password123';
+let HASHED_PASSWORD: string;
+
+beforeAll(async () => {
+    HASHED_PASSWORD = await bcrypt.hash(TEST_PASSWORD, 10);
+});
+
+function createTestUser(overrides: Partial<{ username: string; email: string; bio: string; image: string }> = {}) {
+    return User.create({
+        username: 'testuser',
+        email: 'test@example.com',
+        password: HASHED_PASSWORD,
+        bio: '',
+        image: 'https://static.productionready.io/images/smiley-cyrus.jpg',
+        ...overrides,
+    });
+}
 
 describe('AuthModule', () => {
     let authModule: AuthModule;
@@ -13,19 +31,16 @@ describe('AuthModule', () => {
     beforeEach(async () => {
         tokenAdapter = new InMemoryTokenAdapter();
         authModule = new AuthModule(User, tokenAdapter);
-        // Clear all users before each test
         await User.deleteMany({});
     });
 
     describe('register', () => {
         it('should register a new user and return UserDTO with token', async () => {
-            const input = {
+            const result = await authModule.register({
                 email: 'test@example.com',
                 username: 'testuser',
-                password: 'password123',
-            };
-
-            const result = await authModule.register(input);
+                password: TEST_PASSWORD,
+            });
 
             expect(result).toMatchObject({
                 username: 'testuser',
@@ -39,98 +54,77 @@ describe('AuthModule', () => {
         });
 
         it('should hash the password and not store plain text', async () => {
-            const input = {
+            await authModule.register({
                 email: 'test@example.com',
                 username: 'testuser',
-                password: 'password123',
-            };
-
-            await authModule.register(input);
+                password: TEST_PASSWORD,
+            });
 
             const user = await User.findOne({ email: 'test@example.com' }).exec();
             expect(user).not.toBeNull();
-            expect(user!.password).not.toBe('password123');
-            expect(user!.password.length).toBeGreaterThan(20); // bcrypt hash
+            expect(user!.password).not.toBe(TEST_PASSWORD);
+            expect(user!.password.length).toBeGreaterThan(20);
         });
 
         it('should reject duplicate email', async () => {
-            const input = {
+            await authModule.register({
                 email: 'test@example.com',
                 username: 'testuser1',
-                password: 'password123',
-            };
+                password: TEST_PASSWORD,
+            });
 
-            await authModule.register(input);
-
-            const duplicateInput = {
+            await expect(authModule.register({
                 email: 'test@example.com',
                 username: 'testuser2',
                 password: 'password456',
-            };
-
-            await expect(authModule.register(duplicateInput)).rejects.toThrow(ConflictError);
+            })).rejects.toThrow(ConflictError);
         });
 
         it('should reject duplicate username', async () => {
-            const input = {
+            await authModule.register({
                 email: 'test1@example.com',
                 username: 'testuser',
-                password: 'password123',
-            };
+                password: TEST_PASSWORD,
+            });
 
-            await authModule.register(input);
-
-            const duplicateInput = {
+            await expect(authModule.register({
                 email: 'test2@example.com',
                 username: 'testuser',
                 password: 'password456',
-            };
-
-            await expect(authModule.register(duplicateInput)).rejects.toThrow(ConflictError);
+            })).rejects.toThrow(ConflictError);
         });
 
         it('should reject missing email', async () => {
-            const input = {
+            await expect(authModule.register({
                 username: 'testuser',
-                password: 'password123',
-            } as any;
-
-            await expect(authModule.register(input)).rejects.toThrow(ValidationError);
+                password: TEST_PASSWORD,
+            } as any)).rejects.toThrow(ValidationError);
         });
 
         it('should reject missing username', async () => {
-            const input = {
+            await expect(authModule.register({
                 email: 'test@example.com',
-                password: 'password123',
-            } as any;
-
-            await expect(authModule.register(input)).rejects.toThrow(ValidationError);
+                password: TEST_PASSWORD,
+            } as any)).rejects.toThrow(ValidationError);
         });
 
         it('should reject missing password', async () => {
-            const input = {
+            await expect(authModule.register({
                 email: 'test@example.com',
                 username: 'testuser',
-            } as any;
-
-            await expect(authModule.register(input)).rejects.toThrow(ValidationError);
+            } as any)).rejects.toThrow(ValidationError);
         });
     });
 
     describe('login', () => {
         beforeEach(async () => {
-            // Create a user for login tests
-            await User.create({
-                username: 'testuser',
-                email: 'test@example.com',
-                password: await bcrypt.hash('password123', 10),
-            });
+            await createTestUser();
         });
 
         it('should login successfully and return UserDTO with token', async () => {
             const result = await authModule.login({
                 email: 'test@example.com',
-                password: 'password123',
+                password: TEST_PASSWORD,
             });
 
             expect(result).toMatchObject({
@@ -146,7 +140,7 @@ describe('AuthModule', () => {
         it('should reject invalid email', async () => {
             await expect(authModule.login({
                 email: 'nonexistent@example.com',
-                password: 'password123',
+                password: TEST_PASSWORD,
             })).rejects.toThrow(NotFoundError);
         });
 
@@ -159,7 +153,7 @@ describe('AuthModule', () => {
 
         it('should reject missing email', async () => {
             await expect(authModule.login({
-                password: 'password123',
+                password: TEST_PASSWORD,
             } as any)).rejects.toThrow(ValidationError);
         });
 
@@ -174,17 +168,14 @@ describe('AuthModule', () => {
         let userId: string;
 
         beforeEach(async () => {
-            const user = await User.create({
-                username: 'testuser',
-                email: 'test@example.com',
-                password: await bcrypt.hash('password123', 10),
+            const user = await createTestUser({
                 bio: 'Test bio',
                 image: 'https://example.com/image.jpg',
             });
             userId = user._id.toString();
         });
 
-        it('should return UserDTO without regenerating token', async () => {
+        it('should return UserDTO with token', async () => {
             const result = await authModule.getCurrentUser(userId);
 
             expect(result).toMatchObject({
@@ -206,10 +197,7 @@ describe('AuthModule', () => {
         let userId: string;
 
         beforeEach(async () => {
-            const user = await User.create({
-                username: 'testuser',
-                email: 'test@example.com',
-                password: await bcrypt.hash('password123', 10),
+            const user = await createTestUser({
                 bio: 'Original bio',
                 image: 'https://example.com/original.jpg',
             });
@@ -247,7 +235,6 @@ describe('AuthModule', () => {
             const result = await authModule.updateUser(userId, { password: 'newpassword123' });
 
             expect(result.username).toBe('testuser');
-            // Verify password was hashed in DB
             const user = await User.findById(userId).exec();
             expect(user!.password).not.toBe('newpassword123');
         });
@@ -271,23 +258,13 @@ describe('AuthModule', () => {
         });
 
         it('should reject duplicate username on update', async () => {
-            // Create another user
-            await User.create({
-                username: 'otheruser',
-                email: 'other@example.com',
-                password: await bcrypt.hash('password123', 10),
-            });
+            await createTestUser({ username: 'otheruser', email: 'other@example.com' });
 
             await expect(authModule.updateUser(userId, { username: 'otheruser' })).rejects.toThrow(ConflictError);
         });
 
         it('should reject duplicate email on update', async () => {
-            // Create another user
-            await User.create({
-                username: 'otheruser',
-                email: 'other@example.com',
-                password: await bcrypt.hash('password123', 10),
-            });
+            await createTestUser({ username: 'otheruser', email: 'other@example.com' });
 
             await expect(authModule.updateUser(userId, { email: 'other@example.com' })).rejects.toThrow(ConflictError);
         });

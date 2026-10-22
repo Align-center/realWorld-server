@@ -5,6 +5,12 @@ import type { IUser } from '@/models/User';
 import type { TokenPort, TokenPayload } from './ports/TokenPort';
 import { ValidationError, NotFoundError, UnauthorizedError, ConflictError } from '@/src/shared/errors/AppError';
 
+/** Default profile image URL (matches User model default) */
+const DEFAULT_IMAGE_URL = 'https://static.productionready.io/images/smiley-cyrus.jpg';
+
+/** Type for a fully populated User document */
+type UserDoc = IUser & Document;
+
 /**
  * Data Transfer Object for authenticated user responses.
  * Contains username, email, bio, image, and JWT token.
@@ -124,13 +130,13 @@ export class AuthModule {
         const user = await this.userModel.findOne({ email: input.email }).exec();
 
         if (!user) {
-            throw new NotFoundError('User Not Found');
+            throw new NotFoundError('User not found');
         }
 
         const isMatch = await bcrypt.compare(input.password, user.password);
 
         if (!isMatch) {
-            throw new UnauthorizedError('Wrong password');
+            throw new UnauthorizedError('Invalid password');
         }
 
         const token = this.generateToken(user);
@@ -140,7 +146,7 @@ export class AuthModule {
 
     /**
      * Gets the current user by ID.
-     * Returns UserDTO without regenerating token (uses existing token from DB or generates new one).
+     * Returns UserDTO with a newly generated token.
      * @param userId - User ID
      * @returns UserDTO
      * @throws NotFoundError if user not found
@@ -149,7 +155,7 @@ export class AuthModule {
         const user = await this.userModel.findById(userId).exec();
 
         if (!user) {
-            throw new NotFoundError('User Not Found');
+            throw new NotFoundError('User not found');
         }
 
         const token = this.generateToken(user);
@@ -171,12 +177,12 @@ export class AuthModule {
         const user = await this.userModel.findById(userId).exec();
 
         if (!user) {
-            throw new NotFoundError('User Not Found');
+            throw new NotFoundError('User not found');
         }
 
-        await this.checkAndApplyEmailChange(user, patch.email);
-        await this.checkAndApplyUsernameChange(user, patch.username);
-        this.applyPasswordChange(user, patch.password);
+        await this.checkAndApplyUniqueFieldChange(user, 'email', patch.email, 'Email already exists');
+        await this.checkAndApplyUniqueFieldChange(user, 'username', patch.username, 'Username already exists');
+        await this.applyPasswordChange(user, patch.password);
         this.applyOptionalFields(user, patch);
 
         await user.save();
@@ -187,44 +193,39 @@ export class AuthModule {
     }
 
     /**
-     * Checks for email conflicts and applies the change if valid.
+     * Checks for a unique field conflict and applies the change if valid.
      */
-    private async checkAndApplyEmailChange(user: IUser & Document, newEmail?: string): Promise<void> {
-        if (newEmail && newEmail !== user.email) {
-            const existing = await this.userModel.findOne({ email: newEmail }).exec();
+    private async checkAndApplyUniqueFieldChange<
+        T extends UserDoc,
+        K extends keyof Pick<T, 'email' | 'username'>
+    >(
+        user: T,
+        field: K,
+        newValue: string | undefined,
+        errorMessage: string
+    ): Promise<void> {
+        if (newValue && newValue !== user[field]) {
+            const existing = await this.userModel.findOne({ [field]: newValue }).exec();
             if (existing) {
-                throw new ConflictError('Email already exists');
+                throw new ConflictError(errorMessage);
             }
-            user.email = newEmail;
-        }
-    }
-
-    /**
-     * Checks for username conflicts and applies the change if valid.
-     */
-    private async checkAndApplyUsernameChange(user: IUser & Document, newUsername?: string): Promise<void> {
-        if (newUsername && newUsername !== user.username) {
-            const existing = await this.userModel.findOne({ username: newUsername }).exec();
-            if (existing) {
-                throw new ConflictError('Username already exists');
-            }
-            user.username = newUsername;
+            user[field] = newValue;
         }
     }
 
     /**
      * Applies password change with hashing if provided.
      */
-    private applyPasswordChange(user: IUser & Document, newPassword?: string): void {
+    private async applyPasswordChange(user: UserDoc, newPassword?: string): Promise<void> {
         if (newPassword) {
-            user.password = bcrypt.hashSync(newPassword, this.saltRounds);
+            user.password = await bcrypt.hash(newPassword, this.saltRounds);
         }
     }
 
     /**
      * Applies optional field updates (bio, image).
      */
-    private applyOptionalFields(user: IUser & Document, patch: UpdateUserInput): void {
+    private applyOptionalFields(user: UserDoc, patch: UpdateUserInput): void {
         if (patch.bio !== undefined) {
             user.bio = patch.bio;
         }
@@ -234,23 +235,31 @@ export class AuthModule {
     }
 
     /**
-     * Validates registration input.
+     * Validates that required fields are present in the input.
      * @throws ValidationError if any required field is missing
      */
-    private validateRegisterInput(input: RegisterInput): void {
-        const missingFields: string[] = [];
-
-        if (!input.email) missingFields.push('email');
-        if (!input.username) missingFields.push('username');
-        if (!input.password) missingFields.push('password');
+    private validateRequiredFields(
+        input: object,
+        requiredFields: string[],
+        context: string
+    ): void {
+        const missingFields = requiredFields.filter(field => !(field in input) || !input[field as keyof object]);
 
         if (missingFields.length > 0) {
             const fieldErrors: Record<string, string[]> = {};
             for (const field of missingFields) {
                 fieldErrors[field] = [`${field} is required`];
             }
-            throw new ValidationError('Validation failed', fieldErrors);
+            throw new ValidationError(`Validation failed: ${context}`, fieldErrors);
         }
+    }
+
+    /**
+     * Validates registration input.
+     * @throws ValidationError if any required field is missing
+     */
+    private validateRegisterInput(input: RegisterInput): void {
+        this.validateRequiredFields(input, ['email', 'username', 'password'], 'registration');
     }
 
     /**
@@ -258,24 +267,13 @@ export class AuthModule {
      * @throws ValidationError if any required field is missing
      */
     private validateLoginInput(input: LoginInput): void {
-        const missingFields: string[] = [];
-
-        if (!input.email) missingFields.push('email');
-        if (!input.password) missingFields.push('password');
-
-        if (missingFields.length > 0) {
-            const fieldErrors: Record<string, string[]> = {};
-            for (const field of missingFields) {
-                fieldErrors[field] = [`${field} is required`];
-            }
-            throw new ValidationError('Validation failed', fieldErrors);
-        }
+        this.validateRequiredFields(input, ['email', 'password'], 'login');
     }
 
     /**
      * Generates a token for the user using the injected TokenPort.
      */
-    private generateToken(user: IUser & Document): string {
+    private generateToken(user: UserDoc): string {
         const payload: TokenPayload = {
             userId: user._id.toString(),
             email: user.email,
@@ -286,12 +284,12 @@ export class AuthModule {
     /**
      * Converts a User document to UserDTO.
      */
-    private toUserDTO(user: IUser & Document, token: string): UserDTO {
+    private toUserDTO(user: UserDoc, token: string): UserDTO {
         return {
             username: user.username,
             email: user.email,
             bio: user.bio || '',
-            image: user.image || 'https://static.productionready.io/images/smiley-cyrus.jpg',
+            image: user.image || DEFAULT_IMAGE_URL,
             token,
         };
     }
