@@ -26,6 +26,13 @@ interface CommentDTO {
 }
 
 // ============================================================================
+// ERROR MESSAGE CONSTANTS
+// ============================================================================
+
+const ERROR_ONLY_AUTHOR_CAN_DELETE = 'Only the author can delete their comment';
+const ERROR_COMMENT_DELETED = 'Comment successfully deleted';
+
+// ============================================================================
 // CORPUS FIXTURE: Users, Articles, Comments
 // ============================================================================
 
@@ -33,6 +40,8 @@ const USERS_COUNT = 10;
 const ARTICLES_PER_USER = 5;
 const ARTICLES_COUNT = USERS_COUNT * ARTICLES_PER_USER; // 50
 const COMMENTS_PER_ARTICLE = 3;
+
+type CommentDoc = mongoose.Document<unknown, object, IComment> & IComment & { _id: mongoose.Types.ObjectId; __v: number };
 
 interface Corpus {
     users: IUser[];
@@ -43,7 +52,28 @@ interface Corpus {
 let corpus: Corpus;
 let agent: ReturnType<typeof createTestAgent>;
 
-type CommentDoc = mongoose.Document<unknown, object, IComment> & IComment & { _id: mongoose.Types.ObjectId; __v: number };
+// ============================================================================
+// CORPUS HELPER FUNCTIONS
+// ============================================================================
+
+/** Find an article authored by the given user. */
+function findUserArticle(user: IUser): IArticle | undefined {
+    return corpus.articles.find(a => a.author.toString() === user._id.toString());
+}
+
+/** Find the first comment on an article by a specific author. */
+function findCommentByAuthor(article: IArticle, author: IUser): CommentDoc | undefined {
+    return corpus.comments.find(
+        c => c.article.toString() === article._id.toString() && c.author.toString() === author._id.toString()
+    );
+}
+
+/** Find an article that has a comment by the given author. */
+function findArticleWithCommentByAuthor(author: IUser): IArticle | undefined {
+    const comment = corpus.comments.find(c => c.author.toString() === author._id.toString());
+    if (!comment) return undefined;
+    return corpus.articles.find(a => a._id.toString() === comment.article.toString());
+}
 
 async function buildCorpus(): Promise<Corpus> {
     // Create 10 users
@@ -160,19 +190,6 @@ describe('CommentModule — HTTP Characterization Tests', () => {
             expectCommentDTO(response.body.comments[0]);
         });
 
-        it('returns comments with correct author information', async () => {
-            const article = corpus.articles[0];
-            const response = await agent.get(`/api/articles/${article.slug}/comments`);
-
-            expect(response.status).toBe(200);
-            const comment = response.body.comments[0];
-            expect(comment.author).toHaveProperty('username');
-            expect(comment.author).toHaveProperty('bio');
-            expect(comment.author).toHaveProperty('image');
-            expect(comment.author).toHaveProperty('following');
-            expect(typeof comment.author.username).toBe('string');
-        });
-
         it('returns 404 when article does not exist', async () => {
             const response = await agent.get('/api/articles/non-existent-slug-123/comments');
 
@@ -199,16 +216,16 @@ describe('CommentModule — HTTP Characterization Tests', () => {
         it('includes following=true on author when authenticated user follows them', async () => {
             const user = corpus.users[0]; // follows user1
             const followedAuthor = corpus.users[1];
-            // Find an article that has a comment by the followed author (user1)
-            // user1 comments on articles where (i + j + 1) % 10 === 1, e.g., article 0 (j=0)
-            const articleWithCommentByFollowed = corpus.articles[0]; // authored by user0, has comment by user1
+            const article = findArticleWithCommentByAuthor(followedAuthor)!;
 
             const response = await agent
-                .get(`/api/articles/${articleWithCommentByFollowed.slug}/comments`)
+                .get(`/api/articles/${article.slug}/comments`)
                 .set(authHeader(user));
 
             expect(response.status).toBe(200);
-            const comment = response.body.comments.find((c: CommentDTO) => c.author.username === followedAuthor.username);
+            const comment = response.body.comments.find(
+                (c: CommentDTO) => c.author.username === followedAuthor.username
+            );
             expect(comment).toBeDefined();
             expect(comment!.author.following).toBe(true);
         });
@@ -216,16 +233,16 @@ describe('CommentModule — HTTP Characterization Tests', () => {
         it('includes following=false on author when authenticated user does not follow them', async () => {
             const user = corpus.users[0]; // follows user1, does not follow user2
             const notFollowedAuthor = corpus.users[2];
-            // Find an article that has a comment by the not-followed author (user2)
-            // user2 comments on articles where (i + j + 1) % 10 === 2, e.g., article 1 (j=0)
-            const articleWithCommentByNotFollowed = corpus.articles[1]; // authored by user1, has comment by user2
+            const article = findArticleWithCommentByAuthor(notFollowedAuthor)!;
 
             const response = await agent
-                .get(`/api/articles/${articleWithCommentByNotFollowed.slug}/comments`)
+                .get(`/api/articles/${article.slug}/comments`)
                 .set(authHeader(user));
 
             expect(response.status).toBe(200);
-            const comment = response.body.comments.find((c: CommentDTO) => c.author.username === notFollowedAuthor.username);
+            const comment = response.body.comments.find(
+                (c: CommentDTO) => c.author.username === notFollowedAuthor.username
+            );
             expect(comment).toBeDefined();
             expect(comment!.author.following).toBe(false);
         });
@@ -405,20 +422,20 @@ describe('CommentModule — HTTP Characterization Tests', () => {
 
         it('returns 403 when authenticated user is not the comment author', async () => {
             const article = corpus.articles[0];
-            const comment = corpus.comments[0]; // authored by users[1]
-            const nonAuthor = corpus.users[2]; // users[2] is not the author
+            const comment = findCommentByAuthor(article, corpus.users[1])!;
+            const nonAuthor = corpus.users[2];
             const response = await agent
                 .delete(`/api/articles/${article.slug}/comments/${comment._id}`)
                 .set(authHeader(nonAuthor));
 
             expect(response.status).toBe(403);
             expect(response.body).toHaveProperty('message');
-            expect(response.body.message).toBe('Only the author can delete their comment');
+            expect(response.body.message).toBe(ERROR_ONLY_AUTHOR_CAN_DELETE);
         });
 
         it('returns 200 with success message when author deletes their comment', async () => {
             const article = corpus.articles[0];
-            const comment = corpus.comments[0]; // authored by users[1]
+            const comment = findCommentByAuthor(article, corpus.users[1])!;
             const author = corpus.users[1];
             const response = await agent
                 .delete(`/api/articles/${article.slug}/comments/${comment._id}`)
@@ -426,12 +443,12 @@ describe('CommentModule — HTTP Characterization Tests', () => {
 
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('message');
-            expect(response.body.message).toBe('Comment successfully deleted');
+            expect(response.body.message).toBe(ERROR_COMMENT_DELETED);
         });
 
         it('removes comment from database and article', async () => {
             const article = corpus.articles[0];
-            const comment = corpus.comments[0]; // authored by users[1]
+            const comment = findCommentByAuthor(article, corpus.users[1])!;
             const author = corpus.users[1];
             const originalCommentCount = article.comments.length;
 
@@ -448,27 +465,27 @@ describe('CommentModule — HTTP Characterization Tests', () => {
         });
 
         it('author can delete their comment on article they did not author', async () => {
-            const article = corpus.articles[1]; // authored by users[1]
-            const comment = corpus.comments[3]; // on article 1, authored by users[2]
+            const article = findUserArticle(corpus.users[1])!; // article authored by users[1]
+            const comment = findCommentByAuthor(article, corpus.users[2])!; // comment by users[2]
             const author = corpus.users[2];
             const response = await agent
                 .delete(`/api/articles/${article.slug}/comments/${comment._id}`)
                 .set(authHeader(author));
 
             expect(response.status).toBe(200);
-            expect(response.body.message).toBe('Comment successfully deleted');
+            expect(response.body.message).toBe(ERROR_COMMENT_DELETED);
         });
 
         it('article author cannot delete comments by other users', async () => {
-            const article = corpus.articles[0]; // authored by users[0]
-            const comment = corpus.comments[0]; // authored by users[1]
+            const article = findUserArticle(corpus.users[0])!; // article authored by users[0]
+            const comment = findCommentByAuthor(article, corpus.users[1])!; // comment by users[1]
             const articleAuthor = corpus.users[0];
             const response = await agent
                 .delete(`/api/articles/${article.slug}/comments/${comment._id}`)
                 .set(authHeader(articleAuthor));
 
             expect(response.status).toBe(403);
-            expect(response.body.message).toBe('Only the author can delete their comment');
+            expect(response.body.message).toBe(ERROR_ONLY_AUTHOR_CAN_DELETE);
         });
     });
 });
